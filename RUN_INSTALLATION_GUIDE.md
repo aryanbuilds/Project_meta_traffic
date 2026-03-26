@@ -49,6 +49,28 @@ uvicorn api.app:socket_app --port 8000
 
 First run may download MetaDrive assets and yolov8n model weights.
 
+## Performance and Top-View Tuning
+
+Set these in `.env` for better runtime speed and proper 2D window fit:
+
+```env
+YOLO_INFERENCE_RATE=3
+FRAME_SIZE=800
+TOPDOWN_AUTO_FIT=1
+TOPDOWN_MAX_SCREEN_RATIO=0.65
+TOPDOWN_WIDTH=800
+TOPDOWN_HEIGHT=800
+TOPDOWN_WINDOW=1
+TOPDOWN_FILM_SCALE=1.0
+```
+
+Guidance:
+
+- Increase `YOLO_INFERENCE_RATE` (for example `4` or `5`) to improve FPS.
+- Lower `FRAME_SIZE` / `TOPDOWN_WIDTH` / `TOPDOWN_HEIGHT` (for example `640`) for better speed.
+- Keep `TOPDOWN_AUTO_FIT=1` to prevent the pygame top-view window from going off-screen.
+- Set `TOPDOWN_WINDOW=0` for headless top-down rendering when visual window is not required.
+
 ## API Smoke Tests
 
 Run in a second PowerShell terminal:

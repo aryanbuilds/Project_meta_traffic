@@ -1,5 +1,7 @@
 """MetaDrive intersection bootstrap and runtime API introspection."""
 
+import os
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -15,8 +17,62 @@ DEFAULT_ENV_CONFIG = {
 }
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _screen_size() -> tuple[int, int]:
+    try:
+        import tkinter as tk
+
+        root = tk.Tk()
+        root.withdraw()
+        width = int(root.winfo_screenwidth())
+        height = int(root.winfo_screenheight())
+        root.destroy()
+        return width, height
+    except Exception:
+        return 1366, 768
+
+
+@lru_cache(maxsize=1)
+def _topdown_render_config() -> dict[str, Any]:
+    base_size = max(320, int(os.getenv("FRAME_SIZE", "800")))
+    width = max(320, int(os.getenv("TOPDOWN_WIDTH", str(base_size))))
+    height = max(320, int(os.getenv("TOPDOWN_HEIGHT", str(base_size))))
+
+    if _env_bool("TOPDOWN_AUTO_FIT", True):
+        screen_w, screen_h = _screen_size()
+        ratio = float(os.getenv("TOPDOWN_MAX_SCREEN_RATIO", "0.65"))
+        max_w = max(320, int(screen_w * ratio))
+        max_h = max(320, int(screen_h * ratio))
+        scale = min(max_w / width, max_h / height, 1.0)
+        width = max(320, int(width * scale))
+        height = max(320, int(height * scale))
+
+    film_scale = max(1.0, float(os.getenv("TOPDOWN_FILM_SCALE", "1.0")))
+    film_size = (int(width * film_scale), int(height * film_scale))
+    config: dict[str, Any] = {
+        "window": _env_bool("TOPDOWN_WINDOW", True),
+        "screen_size": (width, height),
+        "film_size": film_size,
+    }
+
+    scaling_raw = os.getenv("TOPDOWN_SCALING")
+    if scaling_raw:
+        config["scaling"] = float(scaling_raw)
+
+    return config
+
+
 def create_intersection_env(config: dict[str, Any] | None = None) -> MetaDriveEnv:
     merged = dict(DEFAULT_ENV_CONFIG)
+    merged["use_render"] = _env_bool("METADRIVE_USE_RENDER", merged["use_render"])
+    if "METADRIVE_SHOW_INTERFACE" in os.environ:
+        merged["show_interface"] = _env_bool("METADRIVE_SHOW_INTERFACE", False)
     if config:
         merged.update(config)
     env = MetaDriveEnv(merged)
@@ -45,7 +101,8 @@ def get_traffic_light_debug_info(env: MetaDriveEnv) -> dict[str, Any]:
 
 
 def render_topdown_frame(env: MetaDriveEnv) -> np.ndarray:
-    frame = env.render(mode="topdown", film_size=(800, 800), screen_size=(800, 800))
+    render_cfg = _topdown_render_config()
+    frame = env.render(mode="topdown", **render_cfg)
     if frame is None:
         raise RuntimeError("Top-down renderer returned None")
     return frame

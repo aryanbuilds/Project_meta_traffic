@@ -1,9 +1,11 @@
 """Gemini-based signal decision agent with rule-based fallback."""
 
+import asyncio
 import base64
 import os
 import time
-from typing import Tuple
+from functools import lru_cache
+from typing import Any, Tuple, cast
 
 import cv2
 import instructor
@@ -28,8 +30,31 @@ def _encode_frame_to_data_url(frame: np.ndarray) -> str:
     return f"data:image/jpeg;base64,{b64}"
 
 
+@lru_cache(maxsize=4)
 def _client(model_name: str = DEFAULT_MODEL):
     return instructor.from_provider(model_name)
+
+
+async def _decide_with_client(state: IntersectionState, frame: np.ndarray, model_name: str) -> SignalDecision:
+    prompt = build_state_prompt(state)
+    image_data_url = _encode_frame_to_data_url(frame)
+    client = _client(model_name)
+    result: Any = client.create(
+        response_model=SignalDecision,
+        messages=[
+            {"role": "system", "content": INDIA_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": image_data_url}},
+                ],
+            },
+        ],
+    )
+    if asyncio.iscoroutine(result):
+        result = await result
+    return cast(SignalDecision, result)
 
 
 def decide_signal(
@@ -39,22 +64,7 @@ def decide_signal(
 ) -> Tuple[SignalDecision, str, float]:
     start = time.perf_counter()
     try:
-        prompt = build_state_prompt(state)
-        image_data_url = _encode_frame_to_data_url(frame)
-        client = _client(model_name)
-        decision = client.create(
-            response_model=SignalDecision,
-            messages=[
-                {"role": "system", "content": INDIA_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": image_data_url}},
-                    ],
-                },
-            ],
-        )
+        decision = asyncio.run(_decide_with_client(state, frame, model_name))
         return decision, "llm", (time.perf_counter() - start) * 1000.0
     except Exception:
         fallback = rule_based_decision(state)

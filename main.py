@@ -42,7 +42,17 @@ class SimulationRunner:
         self.junction_id = "J0"
         self.llm_interval = max(1, int(os.getenv("LLM_DECISION_INTERVAL", "10")))
         self.emergency_hold_s = max(15, int(os.getenv("EMERGENCY_HOLD_S", "30")))
+        self.yolo_inference_rate = max(1, int(os.getenv("YOLO_INFERENCE_RATE", "3")))
         self.broadcaster = SimBroadcaster(sio, fps_cap=int(os.getenv("BROADCAST_FPS_CAP", "10"))) if sio else None
+        self._last_detection = {
+            "north": [],
+            "south": [],
+            "east": [],
+            "west": [],
+            "ambulance_detected": False,
+            "ambulance_direction": None,
+            "bboxes": [],
+        }
 
         self.event_handler = AmbulanceEventHandler()
         self.corridor = CorridorCoordinator()
@@ -99,6 +109,15 @@ class SimulationRunner:
         self.latest_decision = None
         self.last_decision_step = -1
         self.wait_s = {"north": 0, "south": 0, "east": 0, "west": 0}
+        self._last_detection = {
+            "north": [],
+            "south": [],
+            "east": [],
+            "west": [],
+            "ambulance_detected": False,
+            "ambulance_direction": None,
+            "bboxes": [],
+        }
         self.last_error = ""
         return self.status()
 
@@ -134,7 +153,12 @@ class SimulationRunner:
         self.env.step(action)
 
         frame = render_topdown_frame(self.env)
-        detection = detect_zones(frame)
+        should_infer = self.step == 1 or (self.step % self.yolo_inference_rate == 0)
+        if should_infer:
+            detection = detect_zones(frame)
+            self._last_detection = detection
+        else:
+            detection = self._last_detection
         zone_pce = compute_all_zones(detection, wait_s=self.wait_s)
 
         await self._handle_emergency_detection(detection)
