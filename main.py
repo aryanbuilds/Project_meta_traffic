@@ -41,7 +41,9 @@ class SimulationRunner:
         self.episodes_completed = 0
         self.arrive_dest_count = 0
         self.episode_start_pos: list[float] | None = None
+        self.episode_target = ""
         self.last_episode_result = ""
+        self.agent_policy_mode = os.getenv("AGENT_POLICY_MODE", "manual").strip().lower()
 
         self.wait_s = {"north": 0, "south": 0, "east": 0, "west": 0}
         self.last_decision_step = -1
@@ -144,6 +146,8 @@ class SimulationRunner:
             "episodes_completed": self.episodes_completed,
             "arrive_dest_count": self.arrive_dest_count,
             "episode_start_pos": self.episode_start_pos,
+            "episode_target": self.episode_target,
+            "agent_policy_mode": self.agent_policy_mode,
             "last_episode_result": self.last_episode_result,
             "last_error": self.last_error,
         }
@@ -334,6 +338,9 @@ class SimulationRunner:
         return self.last_decision_step < 0 or (self.step - self.last_decision_step) >= self.llm_interval
 
     def _driver_action(self) -> np.ndarray:
+        if self.agent_policy_mode == "idm":
+            # IDM policy computes control internally; keep env action neutral.
+            return np.asarray([0.0, 0.0], dtype=np.float32)
         # Keep a stable forward-driving baseline to avoid random stuck behavior.
         steer = float(os.getenv("DRIVER_STEER", "0.0"))
         throttle = float(os.getenv("DRIVER_THROTTLE", "0.35"))
@@ -358,8 +365,19 @@ class SimulationRunner:
                 self.episode_start_pos = [float(position[0]), float(position[1])]
             else:
                 self.episode_start_pos = None
+
+            navigation = getattr(agent, "navigation", None)
+            destination = ""
+            if navigation is not None:
+                checkpoints = getattr(navigation, "checkpoints", None)
+                if checkpoints:
+                    destination = str(checkpoints[-1])
+                elif hasattr(navigation, "final_road"):
+                    destination = str(getattr(navigation, "final_road"))
+            self.episode_target = destination
         except Exception:
             self.episode_start_pos = None
+            self.episode_target = ""
 
 
 async def run(steps: int = 300) -> None:

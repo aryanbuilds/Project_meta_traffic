@@ -66,6 +66,11 @@ TOPDOWN_SCALING=3.0
 TOPDOWN_CAMERA_MODE=map_center
 DRIVER_STEER=0.0
 DRIVER_THROTTLE=0.35
+AGENT_POLICY_MODE=idm
+TRAFFIC_DENSITY=0.1
+CRASH_VEHICLE_DONE=0
+CRASH_OBJECT_DONE=1
+OUT_OF_ROAD_DONE=1
 ```
 
 Guidance:
@@ -74,6 +79,8 @@ Guidance:
 - Lower `FRAME_SIZE` / `TOPDOWN_WIDTH` / `TOPDOWN_HEIGHT` (for example `640`) for better speed.
 - Keep `TOPDOWN_AUTO_FIT=1` to prevent the pygame top-view window from going off-screen.
 - Set `TOPDOWN_WINDOW=0` for headless top-down rendering when visual window is not required.
+- Set `AGENT_POLICY_MODE=idm` for MetaDrive built-in autopilot behavior.
+- Set `CRASH_VEHICLE_DONE=0` to avoid immediate episode termination on vehicle collisions during demo loops.
 
 ## Environment Mode Selection
 

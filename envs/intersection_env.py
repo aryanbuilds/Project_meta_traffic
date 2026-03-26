@@ -75,6 +75,22 @@ def create_intersection_env(config: dict[str, Any] | None = None) -> MetaDriveEn
     merged["use_render"] = _env_bool("METADRIVE_USE_RENDER", merged["use_render"])
     if "METADRIVE_SHOW_INTERFACE" in os.environ:
         merged["show_interface"] = _env_bool("METADRIVE_SHOW_INTERFACE", False)
+
+    policy_mode = os.getenv("AGENT_POLICY_MODE", "manual").strip().lower()
+    if policy_mode == "idm":
+        from metadrive.policy.idm_policy import IDMPolicy
+
+        merged["agent_policy"] = IDMPolicy
+
+    if "CRASH_VEHICLE_DONE" in os.environ:
+        merged["crash_vehicle_done"] = _env_bool("CRASH_VEHICLE_DONE", True)
+    if "CRASH_OBJECT_DONE" in os.environ:
+        merged["crash_object_done"] = _env_bool("CRASH_OBJECT_DONE", True)
+    if "OUT_OF_ROAD_DONE" in os.environ:
+        merged["out_of_road_done"] = _env_bool("OUT_OF_ROAD_DONE", True)
+    if "TRAFFIC_DENSITY" in os.environ:
+        merged["traffic_density"] = float(os.getenv("TRAFFIC_DENSITY", "0.1"))
+
     if config:
         merged.update(config)
     env = MetaDriveEnv(merged)
