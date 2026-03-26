@@ -61,9 +61,11 @@ def _topdown_render_config() -> dict[str, Any]:
         "film_size": film_size,
     }
 
-    scaling_raw = os.getenv("TOPDOWN_SCALING")
+    scaling_raw = os.getenv("TOPDOWN_SCALING", "3.0")
     if scaling_raw:
         config["scaling"] = float(scaling_raw)
+
+    config["camera_mode"] = os.getenv("TOPDOWN_CAMERA_MODE", "map_center").strip().lower()
 
     return config
 
@@ -101,7 +103,16 @@ def get_traffic_light_debug_info(env: MetaDriveEnv) -> dict[str, Any]:
 
 
 def render_topdown_frame(env: MetaDriveEnv) -> np.ndarray:
-    render_cfg = _topdown_render_config()
+    render_cfg = dict(_topdown_render_config())
+    camera_mode = str(render_cfg.pop("camera_mode", "map_center"))
+    if camera_mode == "map_center":
+        current_map = getattr(env, "current_map", None)
+        get_center = getattr(current_map, "get_center_point", None)
+        if callable(get_center):
+            try:
+                render_cfg["camera_position"] = get_center()
+            except Exception:
+                pass
     frame = env.render(mode="topdown", **render_cfg)
     if frame is None:
         raise RuntimeError("Top-down renderer returned None")

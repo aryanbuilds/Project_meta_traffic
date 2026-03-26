@@ -6,6 +6,9 @@ import asyncio
 import contextlib
 import os
 import time
+from typing import Any
+
+import numpy as np
 
 from api.broadcaster import SimBroadcaster
 from agent.llm_agent import decide_signal
@@ -32,6 +35,13 @@ class SimulationRunner:
         self.fps = 0.0
         self.last_error = ""
         self.latest_decision: dict | None = None
+        self._last_obs: Any = None
+        self._last_info: dict[str, Any] = {}
+        self.episode_index = 0
+        self.episodes_completed = 0
+        self.arrive_dest_count = 0
+        self.episode_start_pos: list[float] | None = None
+        self.last_episode_result = ""
 
         self.wait_s = {"north": 0, "south": 0, "east": 0, "west": 0}
         self.last_decision_step = -1
@@ -63,7 +73,7 @@ class SimulationRunner:
 
         if self.env is None:
             self.env = create_intersection_env()
-            self.env.reset()
+            self._reset_env()
 
         self.running = True
         self.paused = False
@@ -76,13 +86,13 @@ class SimulationRunner:
         self.paused = False
 
         if self._task is not None:
-            with contextlib.suppress(asyncio.CancelledError):
+            with contextlib.suppress(asyncio.CancelledError, SystemExit):
                 await self._task
             self._task = None
 
         if self._corridor_task is not None and not self._corridor_task.done():
             self._corridor_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
+            with contextlib.suppress(asyncio.CancelledError, SystemExit):
                 await self._corridor_task
             self._corridor_task = None
 
@@ -104,7 +114,7 @@ class SimulationRunner:
     async def reset(self) -> dict:
         if self.env is None:
             self.env = create_intersection_env()
-        self.env.reset()
+        self._reset_env()
         self.step = 0
         self.latest_decision = None
         self.last_decision_step = -1
@@ -119,6 +129,7 @@ class SimulationRunner:
             "bboxes": [],
         }
         self.last_error = ""
+        self.last_episode_result = ""
         return self.status()
 
     def status(self) -> dict:
@@ -129,6 +140,11 @@ class SimulationRunner:
             "step": self.step,
             "fps": round(self.fps, 2),
             "corridor_active": self.corridor.state.active,
+            "episode_index": self.episode_index,
+            "episodes_completed": self.episodes_completed,
+            "arrive_dest_count": self.arrive_dest_count,
+            "episode_start_pos": self.episode_start_pos,
+            "last_episode_result": self.last_episode_result,
             "last_error": self.last_error,
         }
 
@@ -140,6 +156,10 @@ class SimulationRunner:
 
             try:
                 await self._run_step()
+            except SystemExit:
+                self.last_error = "Render window closed by user"
+                self.running = False
+                break
             except Exception as exc:  # noqa: BLE001
                 self.last_error = str(exc)
                 await asyncio.sleep(0.1)
@@ -149,8 +169,39 @@ class SimulationRunner:
     async def _run_step(self) -> None:
         assert self.env is not None
         self.step += 1
-        action = self.env.action_space.sample()
-        self.env.step(action)
+        action = self._driver_action()
+        step_out = self.env.step(action)
+        step_tuple = step_out if isinstance(step_out, tuple) else (step_out,)
+        terminated = False
+        truncated = False
+        info: dict[str, Any] = {}
+        if len(step_tuple) == 5:
+            obs = step_tuple[0]
+            terminated = bool(step_tuple[2])
+            truncated = bool(step_tuple[3])
+            info = step_tuple[4] if isinstance(step_tuple[4], dict) else {}
+        elif len(step_tuple) == 4:
+            obs = step_tuple[0]
+            terminated = bool(step_tuple[2])
+            info = step_tuple[3] if isinstance(step_tuple[3], dict) else {}
+        else:
+            obs = step_tuple[0]
+
+        self._last_obs = obs
+        self._last_info = info if isinstance(info, dict) else {}
+
+        if terminated or truncated:
+            self.episodes_completed += 1
+            if bool(self._last_info.get("arrive_dest", False)):
+                self.arrive_dest_count += 1
+                self.last_episode_result = "arrive_dest"
+            elif bool(self._last_info.get("out_of_road", False)):
+                self.last_episode_result = "out_of_road"
+            elif bool(self._last_info.get("crash_vehicle", False)):
+                self.last_episode_result = "crash_vehicle"
+            else:
+                self.last_episode_result = "terminated"
+            self._reset_env()
 
         frame = render_topdown_frame(self.env)
         should_infer = self.step == 1 or (self.step % self.yolo_inference_rate == 0)
@@ -281,6 +332,34 @@ class SimulationRunner:
 
     def _should_decide_now(self) -> bool:
         return self.last_decision_step < 0 or (self.step - self.last_decision_step) >= self.llm_interval
+
+    def _driver_action(self) -> np.ndarray:
+        # Keep a stable forward-driving baseline to avoid random stuck behavior.
+        steer = float(os.getenv("DRIVER_STEER", "0.0"))
+        throttle = float(os.getenv("DRIVER_THROTTLE", "0.35"))
+        return np.asarray([steer, throttle], dtype=np.float32)
+
+    def _reset_env(self) -> None:
+        assert self.env is not None
+        reset_out = self.env.reset()
+        self.episode_index += 1
+        if isinstance(reset_out, tuple):
+            self._last_obs = reset_out[0]
+            maybe_info = reset_out[1] if len(reset_out) > 1 else {}
+            self._last_info = maybe_info if isinstance(maybe_info, dict) else {}
+        else:
+            self._last_obs = reset_out
+            self._last_info = {}
+
+        try:
+            agent = getattr(self.env, "agent", None)
+            position = getattr(agent, "position", None)
+            if position is not None:
+                self.episode_start_pos = [float(position[0]), float(position[1])]
+            else:
+                self.episode_start_pos = None
+        except Exception:
+            self.episode_start_pos = None
 
 
 async def run(steps: int = 300) -> None:

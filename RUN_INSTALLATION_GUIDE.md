@@ -62,6 +62,10 @@ TOPDOWN_WIDTH=800
 TOPDOWN_HEIGHT=800
 TOPDOWN_WINDOW=1
 TOPDOWN_FILM_SCALE=1.0
+TOPDOWN_SCALING=3.0
+TOPDOWN_CAMERA_MODE=map_center
+DRIVER_STEER=0.0
+DRIVER_THROTTLE=0.35
 ```
 
 Guidance:
@@ -70,6 +74,12 @@ Guidance:
 - Lower `FRAME_SIZE` / `TOPDOWN_WIDTH` / `TOPDOWN_HEIGHT` (for example `640`) for better speed.
 - Keep `TOPDOWN_AUTO_FIT=1` to prevent the pygame top-view window from going off-screen.
 - Set `TOPDOWN_WINDOW=0` for headless top-down rendering when visual window is not required.
+
+## Environment Mode Selection
+
+- Use `MetaDriveEnv` (current implementation) for single-agent control and endpoint-focused demos.
+- Use `MultiAgentIntersectionEnv` for true multi-agent control where each agent has its own action each step.
+- Current backend is single-agent `MetaDriveEnv` with traffic participants, and now handles episode termination/reset correctly.
 
 ## API Smoke Tests
 
