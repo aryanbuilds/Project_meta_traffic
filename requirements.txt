@@ -29,3 +29,4 @@ sqlite-utils                    # SQLite decision logger
 
 # ── Config ────────────────────────────────────────────────
 python-dotenv                   # load .env (GEMINI_API_KEY etc.)
+jsonref

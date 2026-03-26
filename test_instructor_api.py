@@ -12,6 +12,10 @@ import os
 import sys
 from pydantic import BaseModel, Field
 from typing import Literal
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 print("=" * 70)
 print("Testing instructor + Gemini API Integration")
@@ -21,28 +25,28 @@ print("=" * 70)
 print("\n1. Checking GEMINI_API_KEY environment variable...")
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
-    print("✗ GEMINI_API_KEY not found in environment")
+    print("[X] GEMINI_API_KEY not found in environment")
     print("  Please set it: export GEMINI_API_KEY='your-api-key-here'")
     print("  Get free key: https://aistudio.google.com")
     sys.exit(1)
 else:
-    print(f"✓ GEMINI_API_KEY found ({len(api_key)} characters)")
+    print(f"[OK] GEMINI_API_KEY found ({len(api_key)} characters)")
 
 # ── Test Pattern 1: from_provider (2025 current API) ─────────────────
 print("\n2. Testing Pattern 1: instructor.from_provider() [CURRENT 2025 API]")
 try:
     import instructor
-    print("  ✓ instructor imported")
+    print("  [OK] instructor imported")
 except ImportError as e:
-    print(f"  ✗ instructor import failed: {e}")
+    print(f"  [X] instructor import failed: {e}")
     print("  Install: pip install instructor")
     sys.exit(1)
 
 try:
     from google import genai
-    print("  ✓ google.genai imported")
+    print("  [OK] google.genai imported")
 except ImportError as e:
-    print(f"  ✗ google.genai import failed: {e}")
+    print(f"  [X] google.genai import failed: {e}")
     print("  Install: pip install google-genai")
     sys.exit(1)
 
@@ -55,14 +59,14 @@ class TestSignalDecision(BaseModel):
 
 print("\n3. Initializing instructor client...")
 try:
-    client = instructor.from_provider("google/gemini-2.0-flash")
-    print("  ✓ Client created with instructor.from_provider()")
+    client = instructor.from_provider("google/gemini-2.0-flash-lite")
+    print("  [OK] Client created with instructor.from_provider()")
 except Exception as e:
-    print(f"  ✗ Client creation failed: {e}")
+    print(f"  [X] Client creation failed: {e}")
     sys.exit(1)
 
 # ── Make test API call ───────────────────────────────────────────────
-print("\n4. Making test API call to Gemini 2.0 Flash...")
+print("\n4. Making test API call to Gemini 2.0 Flash Lite...")
 test_prompt = """
 You are a Delhi intersection traffic signal controller.
 
@@ -85,10 +89,10 @@ try:
                 "content": test_prompt
             }
         ],
-        max_retries=2
+        max_retries=0  # No retries to avoid spamming API
     )
 
-    print("  ✓ API call successful!")
+    print("  [OK] API call successful!")
     print("\n5. Response validation:")
     print(f"  Phase: {response.phase}")
     print(f"  Duration: {response.duration_s}s")
@@ -100,10 +104,10 @@ try:
     assert len(response.reasoning) >= 20, f"Reasoning too short: {len(response.reasoning)} chars"
     assert response.phase in ['north', 'south', 'east', 'west'], f"Invalid phase: {response.phase}"
 
-    print("\n  ✓ All Pydantic validations passed!")
+    print("\n  [OK] All Pydantic validations passed!")
 
 except Exception as e:
-    print(f"  ✗ API call failed: {e}")
+    print(f"  [X] API call failed: {e}")
     print("\nDEBUG INFO:")
     print(f"  Exception type: {type(e).__name__}")
     print(f"  Exception args: {e.args}")
@@ -116,21 +120,21 @@ try:
     client2 = instructor.from_gemini(
         genai.GenerativeModel('gemini-2.0-flash')
     )
-    print("  ✓ Pattern 2 works (from_gemini)")
+    print("  [OK] Pattern 2 works (from_gemini)")
 except AttributeError as e:
-    print(f"  ✗ Pattern 2 failed: {e}")
+    print(f"  [X] Pattern 2 failed: {e}")
     print("     This confirms Pattern 1 (from_provider) is the correct 2025 API")
 except Exception as e:
-    print(f"  ✗ Pattern 2 failed with unexpected error: {e}")
+    print(f"  [X] Pattern 2 failed with unexpected error: {e}")
 
 # ── Summary ──────────────────────────────────────────────────────────
 print("\n" + "=" * 70)
 print("SUMMARY: instructor API Verification")
 print("=" * 70)
-print("✓ instructor + Gemini 2.0 Flash working correctly")
-print("✓ Correct API pattern: instructor.from_provider('google/gemini-2.0-flash')")
-print("✓ Pydantic structured output validation working")
-print("✓ Ready to implement T03.4 on Day 3")
+print("[OK] instructor + Gemini 2.0 Flash working correctly")
+print("[OK] Correct API pattern: instructor.from_provider('google/gemini-2.0-flash')")
+print("[OK] Pydantic structured output validation working")
+print("[OK] Ready to implement T03.4 on Day 3")
 print("\nACTION REQUIRED:")
 print("  Update Stages.json T03.4 to use Pattern 1 (from_provider)")
 print("=" * 70)
