@@ -76,3 +76,37 @@ Python runtime is unavailable in this sandbox, so these checks are pending in yo
 1. `python inspect_traffic_lights.py`
 2. `python main.py`
 3. Route/event smoke tests for `routing/` and `emergency/`
+
+## Additional completion (T05 started: backend + streaming)
+
+- Added backend API package:
+  - `api/__init__.py`
+  - `api/app.py` (FastAPI + Socket.IO ASGI app, lifecycle startup/shutdown, health/control/emergency/kpi/decisions endpoints)
+  - `api/broadcaster.py` (schema-versioned `frame`, `decision`, `zones`, `kpi`, `emergency` events with throttling)
+- Refactored runtime loop for API-managed execution:
+  - `main.py` now provides `SimulationRunner` with start/pause/resume/stop/reset and background loop integration
+  - integrated CV detection, PCE computation, LLM decisioning, safety enforcement, signal apply, emergency queue/corridor activation
+- Extended persistence for dashboard/API reads:
+  - `data/logger.py` now includes `log_decision(...)`, `fetch_recent_decisions(...)`, `get_kpi_summary()`
+- Updated execution tracking:
+  - `Stages.json` T05 and subtasks `T05.1`-`T05.4` set to `in_progress`
+
+## Local verification checklist for this stage
+
+1. `uvicorn api.app:socket_app --port 8000 --reload`
+2. `curl http://localhost:8000/health`
+3. `curl http://localhost:8000/api/kpi`
+4. `curl "http://localhost:8000/api/decisions?limit=20"`
+5. `curl -X POST http://localhost:8000/api/control -H "Content-Type: application/json" -d "{\"action\":\"pause\"}"`
+6. `curl -X POST http://localhost:8000/api/control -H "Content-Type: application/json" -d "{\"action\":\"resume\"}"`
+7. `curl -X POST http://localhost:8000/api/emergency -H "Content-Type: application/json" -d "{\"ambulance_id\":\"AMB_DEMO_01\",\"destination\":\"AIIMS\",\"origin_direction\":\"north\"}"`
+
+## Notes
+
+- This environment still cannot execute full Python runtime smoke tests, so runtime behavior must be validated locally using the checklist above.
+
+## Routing mode update (per latest direction)
+
+- `routing/delhi_graph.py` now generates/loads a local weighted random graph for routing tests.
+- Delhi OSM graph connectivity is deferred for now.
+- `Stages.json` T04.1 and component notes updated to reflect random-graph-first workflow.

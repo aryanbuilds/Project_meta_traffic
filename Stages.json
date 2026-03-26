@@ -103,17 +103,17 @@
                                                                    "task":  "T03.5"
                                                                },
                                            "osmnx":  {
-                                                         "status":  "MVP",
+                                                         "status":  "deferred_for_mvp",
                                                          "layer":  "Routing",
                                                          "role":  "Downloads real Delhi road graph from OpenStreetMap for Dijkstra ambulance routing",
-                                                         "detail":  "ox.graph_from_place(\u0027New Delhi, India\u0027, network_type=\u0027drive\u0027). Saved as data/delhi_graph.graphml cache. Used ONLY for routing context — does NOT drive the MetaDrive simulation. Provides real-world credibility: ambulance route computed on actual Delhi road network.",
+                                                         "detail":  "Deferred in current sprint. Routing uses a locally generated weighted random graph for fast iteration and no network dependency. Delhi OSM graph remains an optional realism upgrade.",
                                                          "task":  "T04.1"
                                                      },
                                            "networkx_Dijkstra":  {
                                                                      "status":  "MVP",
                                                                      "layer":  "Routing",
                                                                      "role":  "Computes optimal ambulance route on Delhi road graph — injected as LLM emergency context",
-                                                                     "detail":  "nx.shortest_path(G, origin, dest, weight=\u0027length\u0027). Route list (junction labels) appended to LLM prompt: \u0027EMERGENCY: AMB_001 on route J3→J2→J1, dest=AIIMS. Clear east-west corridor.\u0027 LLM reasons the corridor based on this context.",
+                                                                     "detail":  "Current implementation computes shortest paths on a local weighted random graph for development. Swap input graph to Delhi OSM graph in realism phase.",
                                                                      "task":  "T04.2"
                                                                  },
                                            "FastAPI":  {
@@ -409,11 +409,11 @@
                       "subtasks":  [
                                        {
                                            "id":  "T04.1",
-                                           "title":  "Delhi road graph download and cache",
+                                           "title":  "Random routing environment generator and cache",
                                            "status":  "in_progress",
-                                           "description":  "Create routing/delhi_graph.py. G = ox.graph_from_place(\u0027New Delhi, India\u0027, network_type=\u0027drive\u0027). ox.save_graphml(G, \u0027data/delhi_graph.graphml\u0027). Function get_graph(): if file exists load from cache, else download and save. Print: f\u0027Delhi graph: {len(G.nodes)} nodes, {len(G.edges)} edges\u0027. Expected ~50000 nodes. NOTE: This graph is routing context only — it does not drive or affect the MetaDrive simulation. They are completely independent systems.",
+                                           "description":  "Create routing/delhi_graph.py to generate a weighted random graph for routing tests. Function get_graph(): load cache from data/random_test_graph.gpickle if present, else generate and save. Include sample_route_test() to validate shortest-path flow without external Delhi/OSM connectivity.",
                                            "file":  "routing/delhi_graph.py",
-                                           "test":  "data/delhi_graph.graphml created. get_graph() loads in \u003c1s on second call."
+                                           "test":  "python routing/delhi_graph.py prints graph stats and a sample route. Cached graph reloads on second call."
                                        },
                                        {
                                            "id":  "T04.2",
@@ -454,7 +454,7 @@
                       "title":  "FastAPI backend and Socket.IO broadcaster",
                       "day":  5,
                       "priority":  "high",
-                      "status":  "todo",
+                      "status":  "in_progress",
                       "components_used":  [
                                               "FastAPI",
                                               "python_socketio",
@@ -467,7 +467,7 @@
                                        {
                                            "id":  "T05.1",
                                            "title":  "FastAPI + Socket.IO app setup",
-                                           "status":  "todo",
+                                           "status":  "in_progress",
                                            "description":  "Create api/app.py. Setup: app = FastAPI(); sio = socketio.AsyncServer(cors_allowed_origins=\u0027*\u0027, async_mode=\u0027asgi\u0027); socket_app = socketio.ASGIApp(sio, app). Mount with: app.add_middleware(CORSMiddleware, allow_origins=[\u0027http://localhost:5173\u0027]). lifespan context manager starts sim_loop background task on startup, cleanly stops on shutdown. GET /health returns {status:\u0027ok\u0027, step: sim_state.step, fps: sim_state.fps}.",
                                            "file":  "api/app.py",
                                            "test":  "uvicorn api.app:socket_app --port 8000. curl http://localhost:8000/health returns JSON."
@@ -475,7 +475,7 @@
                                        {
                                            "id":  "T05.2",
                                            "title":  "Real-time Socket.IO broadcaster",
-                                           "status":  "todo",
+                                           "status":  "in_progress",
                                            "description":  "Create api/broadcaster.py. Class SimBroadcaster(sio). 5 emit methods: emit_frame(jpeg_bytes): base64 encode, emit \u0027frame\u0027 event, throttle to max 10/s using time check. emit_decision(decision, controller_type, latency_ms): emit \u0027decision\u0027 with all SignalDecision fields + metadata. emit_kpi(llm_avg_wait, fixed_avg_wait, step): emit \u0027kpi\u0027 every 2 simulation seconds. emit_zones(zone_states): emit \u0027zones\u0027 dict every frame. emit_emergency(active, route, remaining_s): emit \u0027emergency\u0027 state during active corridor.",
                                            "file":  "api/broadcaster.py",
                                            "test":  "Open browser console at localhost:5173 — all 5 event types visible in console while sim runs"
@@ -483,7 +483,7 @@
                                        {
                                            "id":  "T05.3",
                                            "title":  "REST control endpoints",
-                                           "status":  "todo",
+                                           "status":  "in_progress",
                                            "description":  "Add to api/app.py. POST /api/emergency (body: {ambulance_id: str, destination: str}): call event_handler.trigger_manual(), return {status:\u0027triggered\u0027, route: route_text, eta_s: 30}. POST /api/control (body: {action: \u0027start\u0027|\u0027pause\u0027|\u0027reset\u0027}): toggle sim_state.running flag. GET /api/kpi: call logger.get_kpi_summary(), return comparison dict. GET /api/decisions: query last 50 decisions from SQLite, return list for dashboard replay mode.",
                                            "file":  "api/app.py",
                                            "test":  "POST /api/emergency returns 200 with route. GET /api/kpi returns dict with 3 controller types."
@@ -491,7 +491,7 @@
                                        {
                                            "id":  "T05.4",
                                            "title":  "SQLite decision logger",
-                                           "status":  "todo",
+                                           "status":  "in_progress",
                                            "description":  "Create data/logger.py using sqlite-utils. db = Database(\u0027data/decisions.db\u0027). Table decisions auto-created on first insert. Columns: id, step, timestamp, junction_id, phase, duration_s, reasoning, emergency, pce_north, pce_south, pce_east, pce_west, avg_wait_s, latency_ms, controller_type. Function log_decision(decision, state, controller_type, latency_ms). Function get_kpi_summary() -\u003e dict: pandas groupby controller_type, aggregate mean avg_wait_s, count emergency, sum fallback_count.",
                                            "file":  "data/logger.py",
                                            "test":  "After 100 sim steps, decisions.db has rows. get_kpi_summary() returns dict with all 3 controller_type entries."

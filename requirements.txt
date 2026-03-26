@@ -5,7 +5,8 @@ metadrive-simulator==0.4.3      # already installed
 ultralytics                     # YOLOv8 vehicle + ambulance detection
 supervision                     # PolygonZone N/S/E/W counting + annotation
 opencv-python                   # frame encoding, JPEG conversion
-
+numpy                           # array manipulation (supervision dependency)
+torch                            # ultralytics dependency
 # ── LLM Agent ─────────────────────────────────────────────
 google-genai                    # Gemini API (replaces anthropic)
 instructor                      # guaranteed Pydantic output from Gemini
@@ -22,6 +23,8 @@ fastapi                         # REST endpoints
 python-socketio                 # WebSocket for dashboard streaming
 uvicorn                         # ASGI server
 websockets                      # python-socketio dependency
+python-jose                      # JWT authentication
+
 
 # ── Data + Logging ────────────────────────────────────────
 pandas                          # KPI aggregation + CSV export
