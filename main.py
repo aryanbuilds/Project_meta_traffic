@@ -15,9 +15,9 @@ from agent.llm_agent import decide_signal
 from agent.models import IntersectionState, ZoneState
 from agent.phase_utils import phase_serves_direction
 from agent.safety import enforce_safety
-from agent.signal_controller import apply_decision
+from agent.signal_controller import _light_direction as _resolve_light_direction, apply_decision
 from cv.annotator import annotate_frame
-from cv.detector import detect_zones
+from cv.detector import detect_zones, get_detector_health
 from cv.pce_calculator import compute_all_zones
 from cv.zone_config import save_zones_debug_image
 from data.logger import get_kpi_summary, log_decision
@@ -27,6 +27,7 @@ from envs.intersection_env import (
     cycle_traffic_lights,
     create_intersection_env,
     ensure_traffic_lights_ready,
+    render_perception_frame,
     render_topdown_frame,
     save_test_frame,
 )
@@ -72,6 +73,7 @@ class SimulationRunner:
         self.yellow_duration_s = max(2, int(os.getenv("YELLOW_DURATION_S", "5")))
         self.auto_cycle_traffic_lights = os.getenv("AUTO_CYCLE_TRAFFIC_LIGHTS", "0").strip() == "1"
         self.pipeline_debug = os.getenv("PIPELINE_DEBUG", "0").strip() == "1"
+        self.use_polygon_zones = os.getenv("USE_POLYGON_ZONES", "0").strip() == "1"
         self.broadcaster = SimBroadcaster(sio, fps_cap=int(os.getenv("BROADCAST_FPS_CAP", "10"))) if sio else None
         self._last_detection = {
             "north": [],
@@ -87,6 +89,14 @@ class SimulationRunner:
         self.corridor = CorridorCoordinator()
         self._active_decision = None
         self._active_decision_start_step = -1
+        self.llm_success_count = 0
+        self.llm_fallback_count = 0
+        self.last_signal_apply: dict[str, Any] = {}
+        self.yolo_checkpoint_count = 0
+        self.pce_checkpoint_count = 0
+
+        if self.auto_cycle_traffic_lights and self.pipeline_debug:
+            print("PIPELINE|event=warn|message=AUTO_CYCLE_TRAFFIC_LIGHTS enabled; this can override LLM/emergency signal logic")
 
     async def start(self) -> dict:
         if self.running:
@@ -157,10 +167,16 @@ class SimulationRunner:
         self.out_of_road_events = 0
         self._single_incident_latched = {"crash_vehicle": False, "out_of_road": False}
         self._multi_incident_latched = {}
+        self.llm_success_count = 0
+        self.llm_fallback_count = 0
+        self.last_signal_apply = {}
+        self.yolo_checkpoint_count = 0
+        self.pce_checkpoint_count = 0
+
         return self.status()
 
     def status(self) -> dict:
-        return {
+        status = {
             "status": "ok" if not self.last_error else "degraded",
             "running": self.running,
             "paused": self.paused,
@@ -180,7 +196,14 @@ class SimulationRunner:
             "out_of_road_events": self.out_of_road_events,
             "manual_throttle_scale": self._incident_throttle_scale(),
             "last_error": self.last_error,
+            "llm_success_count": self.llm_success_count,
+            "llm_fallback_count": self.llm_fallback_count,
+            "last_signal_apply": self.last_signal_apply,
+            "yolo_checkpoint_count": self.yolo_checkpoint_count,
+            "pce_checkpoint_count": self.pce_checkpoint_count,
         }
+        status.update(get_detector_health())
+        return status
 
     async def _run_loop(self) -> None:
         while self.running:
@@ -214,7 +237,7 @@ class SimulationRunner:
         else:
             obs, terminated, truncated, info = self._parse_single_agent_step(step_tuple)
 
-        if self.auto_cycle_traffic_lights:
+        if self.auto_cycle_traffic_lights and not self.corridor.state.active:
             cycle_traffic_lights(self.env, self.step)
 
         if terminated or truncated:
@@ -234,45 +257,58 @@ class SimulationRunner:
             self._reset_env()
 
         frame = render_topdown_frame(self.env)
+        perception_frame = render_perception_frame(self.env, obs=self._last_obs)
         should_infer = self.step == 1 or (self.step % self.yolo_inference_rate == 0)
         if should_infer:
-            detection = detect_zones(frame)
+            detection = detect_zones(perception_frame, use_polygon_zones=self.use_polygon_zones)
             self._last_detection = detection
+            self.yolo_checkpoint_count += 1
         else:
             detection = self._last_detection
         zone_pce = compute_all_zones(detection, wait_s=self.wait_s)
+        self.pce_checkpoint_count += 1
         if self.pipeline_debug:
             zone_counts = {d: int(zone_pce[d]["count"]) for d in ("north", "south", "east", "west")}
+            frame_source = "perspective" if not self.use_polygon_zones else "mixed"
             print(
-                "PIPELINE_DEBUG"
-                f" step={self.step} infer={int(should_infer)} counts={zone_counts}"
-                f" ambulance={int(bool(detection.get('ambulance_detected', False)))}"
+                "PIPELINE|"
+                f"step={self.step}|infer={int(should_infer)}|counts={zone_counts}|"
+                f"ambulance={int(bool(detection.get('ambulance_detected', False)))}|"
+                f"detector_ready={int(bool(detection.get('detector_ready', False)))}|"
+                f"detector_error={detection.get('detector_error_code')}|"
+                f"frame_source={frame_source}"
             )
 
         await self._handle_emergency_detection(detection, fresh=should_infer)
         await self._pump_emergency_queue()
 
-        self._apply_signal_schedule()
+        if not self.corridor.state.active:
+            self._apply_signal_schedule()
 
         decision_payload = self.latest_decision
         if not self.corridor.state.active and self._should_decide_now():
             state = self._build_state(zone_pce, detection)
-            decision, controller_type, latency_ms = await asyncio.to_thread(decide_signal, state, frame)
+            decision, controller_type, latency_ms = await asyncio.to_thread(decide_signal, state, perception_frame)
             safe_decision = enforce_safety(decision, state)
             self._active_decision = safe_decision
             self._active_decision_start_step = self.step
             self._apply_signal_schedule()
             signal_debug = os.getenv("SIGNAL_DEBUG", "0").strip() == "1"
             signal_result = apply_decision(self.env, safe_decision, step=self.step, debug=signal_debug, control_mode="normal")
+            self.last_signal_apply = signal_result
             if signal_debug:
-                print(f"SIGNAL_DEBUG step={self.step} result={signal_result}")
+                print(f"SIGNAL|step={self.step}|result={signal_result}")
             if self.pipeline_debug:
                 print(
-                    "PIPELINE_DEBUG"
-                    f" step={self.step} controller={controller_type}"
-                    f" latency_ms={latency_ms:.2f} phase={safe_decision.phase}"
-                    f" duration_s={safe_decision.duration_s}"
+                    "PIPELINE|"
+                    f"step={self.step}|controller={controller_type}|"
+                    f"latency_ms={latency_ms:.2f}|phase={safe_decision.phase}|"
+                    f"duration_s={safe_decision.duration_s}|signal_apply_count={signal_result.get('count', 0)}"
                 )
+            if controller_type == "llm":
+                self.llm_success_count += 1
+            else:
+                self.llm_fallback_count += 1
 
             self.latest_decision = safe_decision.model_dump()
             self.last_decision_step = self.step
@@ -317,7 +353,7 @@ class SimulationRunner:
             self._update_waits(zone_pce, phase)
 
         if self.broadcaster is not None:
-            annotated = annotate_frame(frame, detection, zone_pce=zone_pce, decision=decision_payload)
+            annotated = annotate_frame(perception_frame, detection, zone_pce=zone_pce, decision=decision_payload)
             await self.broadcaster.emit_frame(annotated, step=self.step)
             await self.broadcaster.emit_zones(zone_pce, step=self.step)
 
@@ -347,6 +383,8 @@ class SimulationRunner:
             return
 
         self.event_handler.corridor_active = True
+        self._active_decision = None
+        self._active_decision_start_step = -1
         assert self.env is not None
         self._corridor_task = asyncio.create_task(
             self.corridor.activate_corridor(
@@ -592,9 +630,10 @@ class SimulationRunner:
                         {
                             "id": str(lid),
                             "direction": getattr(light, "direction", None),
+                            "resolved_direction": _resolve_light_direction(str(lid), light),
                         }
                     )
-            print(f"PIPELINE_DEBUG reset episode={self.episode_index + 1} lights={light_count} light_meta={light_meta[:8]}")
+            print(f"PIPELINE|event=reset|episode={self.episode_index + 1}|lights={light_count}|light_meta={light_meta[:8]}")
         self.episode_index += 1
         self._single_incident_latched = {"crash_vehicle": False, "out_of_road": False}
         self._multi_incident_latched = {}
@@ -648,12 +687,12 @@ class SimulationRunner:
         green_s = int(self._active_decision.duration_s)
         yellow_s = int(self.yellow_duration_s)
         if elapsed < green_s:
-            apply_decision(self.env, self._active_decision, step=self.step, control_mode="normal")
+            self.last_signal_apply = apply_decision(self.env, self._active_decision, step=self.step, control_mode="normal")
             return
         if elapsed < green_s + yellow_s:
-            apply_decision(self.env, self._active_decision, step=self.step, control_mode="yellow_all")
+            self.last_signal_apply = apply_decision(self.env, self._active_decision, step=self.step, control_mode="yellow_all")
             return
-        apply_decision(self.env, self._active_decision, step=self.step, control_mode="all_red")
+        self.last_signal_apply = apply_decision(self.env, self._active_decision, step=self.step, control_mode="all_red")
         self._active_decision = None
         self._active_decision_start_step = -1
 
@@ -676,6 +715,10 @@ async def run(steps: int = 300) -> None:
 
 if __name__ == "__main__":
     asyncio.run(run())
+
+
+
+
 
 
 

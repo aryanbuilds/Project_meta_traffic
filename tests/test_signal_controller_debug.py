@@ -97,3 +97,22 @@ def test_apply_decision_can_force_yellow_and_all_red_modes():
     assert red_payload["red_count"] == 2
     assert lights["north_light"].status == "red"
     assert lights["east_light"].status == "red"
+
+def test_apply_decision_unknown_direction_defaults_to_red():
+    lights = {
+        "mystery_light": FakeLight(),
+    }
+    env = FakeEnv(lights)
+    decision = SignalDecision(
+        phase="north_south",
+        duration_s=30,
+        reasoning="Ensure safety fallback applies red on unknown light directions.",
+    )
+
+    payload = apply_decision(env, decision, step=11, debug=True)
+
+    assert payload["unknown_direction_count"] == 1
+    assert payload["red_count"] == 1
+    assert payload["count"] == 1
+    assert payload["lights"][0]["applied_target"] == "red"
+    assert lights["mystery_light"].status == "red"

@@ -5,6 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+import cv2
 import numpy as np
 from dotenv import load_dotenv
 from metadrive import MetaDriveEnv
@@ -92,6 +93,41 @@ def _set_first_supported(config: dict[str, Any], env_cls: type[Any], values: lis
             config[key] = value
             break
 
+
+
+def _perception_frame_source() -> str:
+    return os.getenv("PERCEPTION_FRAME_SOURCE", "rgb_camera").strip().lower()
+
+
+def _perception_sensor_name() -> str:
+    return os.getenv("PERCEPTION_SENSOR_NAME", "rgb_camera").strip() or "rgb_camera"
+
+
+def _configure_perception_camera(config: dict[str, Any], env_cls: type[Any]) -> None:
+    """Enable perspective RGB sensing for YOLO when supported by the env class."""
+    source = _perception_frame_source()
+    if source in {"topdown", "top_down"}:
+        return
+
+    sensor_name = _perception_sensor_name()
+    width = max(160, _env_int("PERCEPTION_WIDTH", 640))
+    height = max(120, _env_int("PERCEPTION_HEIGHT", 360))
+
+    _set_if_supported(config, env_cls, "image_observation", True)
+    if _supports_config_key(env_cls, "sensors"):
+        try:
+            from metadrive.component.sensors.rgb_camera import RGBCamera
+
+            sensors = dict(config.get("sensors", {}))
+            sensors[sensor_name] = (RGBCamera, width, height)
+            config["sensors"] = sensors
+        except Exception:
+            pass
+
+    if _supports_config_key(env_cls, "vehicle_config"):
+        vehicle_cfg = dict(config.get("vehicle_config", {}))
+        vehicle_cfg["image_source"] = sensor_name
+        config["vehicle_config"] = vehicle_cfg
 
 def _safe_idm_policy_cls(base_cls: type[Any]) -> type[Any]:
     if not _env_bool("IDM_CONSERVATIVE_MODE", True):
@@ -210,6 +246,7 @@ def create_intersection_env(config: dict[str, Any] | None = None) -> Any:
 
         if config:
             merged.update(config)
+        _configure_perception_camera(merged, MultiAgentIntersectionEnv)
         return MultiAgentIntersectionEnv(merged)
 
     merged = dict(DEFAULT_ENV_CONFIG)
@@ -254,6 +291,7 @@ def create_intersection_env(config: dict[str, Any] | None = None) -> Any:
 
     if config:
         merged.update(config)
+    _configure_perception_camera(merged, MetaDriveEnv)
     return MetaDriveEnv(merged)
 
 
@@ -473,6 +511,67 @@ def render_topdown_frame(env: MetaDriveEnv) -> np.ndarray:
     return frame
 
 
+
+def _to_bgr_uint8(frame: Any) -> np.ndarray | None:
+    arr = np.asarray(frame) if frame is not None else None
+    if arr is None or arr.size == 0:
+        return None
+    if arr.ndim < 3:
+        return None
+    arr = arr[..., :3]
+    if arr.dtype != np.uint8:
+        max_val = float(np.max(arr)) if arr.size else 0.0
+        if max_val <= 1.5:
+            arr = np.clip(arr * 255.0, 0.0, 255.0)
+        arr = np.clip(arr, 0.0, 255.0).astype(np.uint8)
+    return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+
+
+def _extract_frame_from_obs(obs: Any) -> np.ndarray | None:
+    if not isinstance(obs, dict):
+        return None
+
+    image = obs.get("image")
+    if image is None:
+        image_source = _perception_sensor_name()
+        image = obs.get(image_source) or obs.get("rgb_camera") or obs.get("rgb") or obs.get("camera")
+    if isinstance(image, dict):
+        for value in image.values():
+            frame = _to_bgr_uint8(value)
+            if frame is not None:
+                return frame
+        return None
+    return _to_bgr_uint8(image)
+
+
+def render_perception_frame(env: Any, obs: Any | None = None) -> np.ndarray:
+    """Return the frame used by YOLO; defaults to perspective RGB camera if available."""
+    source = _perception_frame_source()
+    if source in {"topdown", "top_down"}:
+        return render_topdown_frame(env)
+
+    obs_frame = _extract_frame_from_obs(obs)
+    if obs_frame is not None:
+        return obs_frame
+
+    engine = getattr(env, "engine", None)
+    get_sensor = getattr(engine, "get_sensor", None)
+    if callable(get_sensor):
+        sensor = get_sensor(_perception_sensor_name())
+        if sensor is not None:
+            for attr in ("get_rgb_array_cpu", "perceive"):
+                reader = getattr(sensor, attr, None)
+                if not callable(reader):
+                    continue
+                try:
+                    frame = reader(to_float=False) if attr == "perceive" else reader()
+                    bgr = _to_bgr_uint8(frame)
+                    if bgr is not None:
+                        return bgr
+                except Exception:
+                    continue
+
+    return render_topdown_frame(env)
 def cycle_traffic_lights(env: Any, step: int) -> None:
     manager = getattr(getattr(env, "engine", None), "traffic_manager", None)
     lights = getattr(manager, "traffic_lights", None)
@@ -640,6 +739,11 @@ def bootstrap_and_capture(config: dict[str, Any] | None = None) -> dict[str, Any
         return debug
     finally:
         env.close()
+
+
+
+
+
 
 
 

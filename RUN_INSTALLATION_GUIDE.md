@@ -18,7 +18,13 @@ From the project root:
 ```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-uv pip install -r .\requirements.txt
+uv pip install -r .\requirements.txt -c .\constraints\windows-cpu.txt --index-url https://download.pytorch.org/whl/cpu
+```
+
+Fallback if the CPU wheel index is unavailable:
+
+```powershell
+uv pip install -r .\requirements.txt -c .\constraints\windows-cpu.txt
 ```
 
 If script execution is blocked:
@@ -32,6 +38,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 ```powershell
 python -c "import cv2, fastapi, socketio, uvicorn; print('imports-ok')"
+python -c "import torch, torchvision, ultralytics; print('torch', torch.__version__, 'torchvision', torchvision.__version__, 'ultralytics', ultralytics.__version__)"
 python -c "from api.app import socket_app; print('app-import-ok')"
 ```
 
@@ -55,6 +62,11 @@ Set these in `.env` for better runtime speed and proper 2D window fit:
 
 ```env
 YOLO_INFERENCE_RATE=3
+PERCEPTION_FRAME_SOURCE=rgb_camera
+PERCEPTION_SENSOR_NAME=rgb_camera
+PERCEPTION_WIDTH=640
+PERCEPTION_HEIGHT=360
+USE_POLYGON_ZONES=0
 FRAME_SIZE=800
 TOPDOWN_AUTO_FIT=1
 TOPDOWN_MAX_SCREEN_RATIO=0.65
@@ -70,6 +82,9 @@ AGENT_POLICY_MODE=idm
 SIM_ENV_MODE=multi_agent
 TRAFFIC_DENSITY=0.2
 VEHICLE_ENABLE_REVERSE=0
+AMBULANCE_OBJ_PATH=Models_G0403A078/ambulance.obj
+AMBULANCE_MODEL_SCALE=0.7
+AMBULANCE_MODEL_Z=0.55
 CRASH_VEHICLE_DONE=0
 CRASH_OBJECT_DONE=1
 OUT_OF_ROAD_DONE=1
@@ -98,6 +113,7 @@ Guidance:
 - Set `SIM_ENV_MODE=multi_agent` to enable `MultiAgentIntersectionEnv` and control all active agents per step.
 - The runner now applies lidar-aware adaptive throttle in manual mode to reduce collision likelihood.
 - Set `PIPELINE_DEBUG=1` to print stage-by-stage checkpoints (YOLO counts, LLM controller type/latency, and traffic-light inventory after reset).
+- Use `PERCEPTION_FRAME_SOURCE=rgb_camera` to run YOLO on perspective 3D camera frames (recommended), while top-down rendering remains available for diagnostics.
 - Set `SIGNAL_DEBUG=1` to print per-light direction-target mapping and applied states.
 
 ## Environment Mode Selection
@@ -118,6 +134,18 @@ Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/control" -Content
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/control" -ContentType "application/json" -Body '{"action":"resume"}' | ConvertTo-Json -Depth 5
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/emergency" -ContentType "application/json" -Body '{"ambulance_id":"AMB_QUICK_01","destination":"AIIMS","origin_direction":"north"}' | ConvertTo-Json -Depth 5
 ```
+
+## Deterministic FIX-4/5 Verification
+
+Run deterministic runtime verification (fixed seed/profile, 3 trials + 50-step checks):
+
+```powershell
+python tools/verify_fix45.py
+```
+
+Expected artifact:
+
+- `data/test_frame.png`
 
 ## Expected Results
 
@@ -155,4 +183,12 @@ PowerShell parsing error when calling Python executable path:
 ## Security
 
 If the Gemini API key has been exposed in logs, rotate it immediately and update `.env`.
+
+Validate the rotated key quickly:
+
+```powershell
+python -c "from agent.llm_agent import DEFAULT_MODEL; print('llm-model', DEFAULT_MODEL)"
+```
+
+
 

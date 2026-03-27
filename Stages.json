@@ -974,7 +974,14 @@
                                       "Fixed T03.4 runtime fallback issue by adding provider-compatible LLM message retry path when multimodal content list is rejected",
                                       "Added pipeline debug checkpoints (PIPELINE_DEBUG/SIGNAL_DEBUG) to expose YOLO counts, controller_type/latency, and per-light state mapping in live runs",
                                       "Hardened env defaults for checklist validation: explicit multi-agent map X, default multi density 0.30, vehicle reverse disabled by default, and conservative IDM spacing baseline",
-                                      "Added missing benchmark/ and demo/ placeholder folders for honest stage tracking and downstream test artifacts"
+                                      "Added missing benchmark/ and demo/ placeholder folders for honest stage tracking and downstream test artifacts",
+                                      "MCP-guided FIX-4 update: switched YOLO ingestion to perspective RGB camera frames via MetaDrive sensor path with topdown fallback retained for diagnostics",
+                                      "Implemented custom ambulance asset integration attempt using Models_G0403A078/ambulance.obj with safe fallback to red DefaultVehicle when mesh attach fails",
+                                      "Fixed signal-control contention: normal scheduler and auto-cycle now gated during active emergency corridor, and corridor activation clears stale scheduled decisions",
+                                      "Hardened traffic-light safety path: unknown-direction lights are forced to red instead of being skipped, reducing stale-green crash risk",
+                                      "Made corridor lifecycle exception-safe with try/finally so emergency state is always released and active=false is emitted even on mid-loop failures"
                                   ]
                   }
 }
+
+

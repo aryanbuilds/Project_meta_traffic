@@ -6,7 +6,7 @@ ultralytics                     # YOLOv8 vehicle + ambulance detection
 supervision                     # PolygonZone N/S/E/W counting + annotation
 opencv-python                   # frame encoding, JPEG conversion
 numpy                           # array manipulation (supervision dependency)
-torch                            # ultralytics dependency
+torch                           # pinned for Windows CPU in constraints/windows-cpu.txt
 # ── LLM Agent ─────────────────────────────────────────────
 google-genai                    # Gemini API (replaces anthropic)
 instructor                      # guaranteed Pydantic output from Gemini

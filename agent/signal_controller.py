@@ -162,13 +162,16 @@ def apply_decision(
         direction = _light_direction(str(light_id), light)
         if direction is None:
             applied["unknown_direction_count"] += 1
+            changed = _set_light(light, "red")
+            if changed:
+                applied["red_count"] += 1
             if debug:
                 applied["lights"].append(
                     {
                         "light_id": str(light_id),
                         "resolved_direction": None,
-                        "applied_target": None,
-                        "applied": False,
+                        "applied_target": "red",
+                        "applied": bool(changed),
                     }
                 )
             continue
@@ -222,6 +225,7 @@ def apply_decision(
 
     applied["count"] = applied["green_count"] + applied["yellow_count"] + applied["red_count"]
     return applied
+
 
 
 
