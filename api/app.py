@@ -111,6 +111,8 @@ async def trigger_emergency(req: EmergencyRequest) -> dict:
         "destination": event.destination,
         "origin_direction": event.origin_direction,
         "route": event.route,
+        "route_source": event.route_source,
+        "route_distance_km": event.route_distance_km,
         "nonce": event.nonce,
     }
 

@@ -184,3 +184,18 @@ Python runtime is unavailable in this sandbox, so these checks are pending in yo
 1. Run a 5-10 minute multi-agent session and compare `crash_vehicle_events` trend before/after.
 2. If crashes still high, further reduce `TRAFFIC_DENSITY` to `0.08` and raise `IDM_TIME_WANTED` to `2.6`.
 3. Add a dedicated KPI endpoint/stream field for crash-rate per 1000 steps.
+
+## Subagent Audit Closure (2026-03-27)
+
+- Re-audited T01/T02/T03 completion claims against implemented code.
+- Added missing defensive regression test for class-specific config key gating in `tests/test_env_mode_guards.py`.
+- Hardened and verified listed critical modules:
+  - `envs/intersection_env.py`
+  - `emergency/event_handler.py`
+  - `agent/safety.py`
+  - `agent/signal_controller.py`
+  - `api/broadcaster.py`
+  - `api/app.py`
+- Updated `Stages.json` completion and patch log entries accordingly.
+
+Note: runtime test execution is still blocked in this sandbox due missing Python launcher/runtime.

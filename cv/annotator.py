@@ -15,6 +15,44 @@ ZONE_COLORS = {
 }
 
 
+def _phase_serves(phase: str, direction: str) -> bool:
+    if phase == "north_south":
+        return direction in {"north", "south"}
+    if phase == "east_west":
+        return direction in {"east", "west"}
+    return phase == direction
+
+
+def _draw_signal_badges(image: np.ndarray, decision: dict | None) -> None:
+    if not decision:
+        return
+    phase = str(decision.get("phase", "north_south"))
+    emergency = bool(decision.get("emergency_detected", False))
+    yellow_mode = bool(decision.get("yellow_phase", False))
+
+    positions = {
+        "north": (image.shape[1] // 2 - 45, 26),
+        "south": (image.shape[1] // 2 - 45, image.shape[0] - 18),
+        "east": (image.shape[1] - 96, image.shape[0] // 2),
+        "west": (6, image.shape[0] // 2),
+    }
+    for direction in ("north", "south", "east", "west"):
+        if yellow_mode:
+            text = "YELLOW"
+            color = (0, 200, 255)
+        else:
+            green = _phase_serves(phase, direction)
+            text = "GREEN" if green else "RED"
+            color = (0, 190, 0) if green else (0, 0, 230)
+        if emergency and _phase_serves(phase, direction):
+            text = "EMERG"
+            color = (0, 0, 255)
+        x, y = positions[direction]
+        cv2.rectangle(image, (x, y - 16), (x + 88, y + 8), (30, 30, 30), -1)
+        cv2.rectangle(image, (x, y - 16), (x + 88, y + 8), color, 2)
+        cv2.putText(image, f"{direction[0].upper()}:{text}", (x + 4, y), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1)
+
+
 def _draw_zones(image: np.ndarray) -> None:
     cv2.polylines(image, [NORTH_ZONE], True, ZONE_COLORS["north"], 2)
     cv2.polylines(image, [SOUTH_ZONE], True, ZONE_COLORS["south"], 2)
@@ -41,7 +79,16 @@ def annotate_frame(frame: np.ndarray, detection_result: dict, zone_pce: dict | N
         y += 24
 
     if decision:
-        cv2.putText(image, f"PHASE={decision.get('phase')} DURATION={decision.get('duration_s')}s", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+        cv2.putText(
+            image,
+            f"PHASE={decision.get('phase')} DURATION={decision.get('duration_s')}s",
+            (10, 120),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (255, 255, 0),
+            2,
+        )
+        _draw_signal_badges(image, decision)
 
     if detection_result.get("ambulance_detected"):
         cv2.rectangle(image, (0, 0), (image.shape[1] - 1, image.shape[0] - 1), (0, 0, 255), 8)

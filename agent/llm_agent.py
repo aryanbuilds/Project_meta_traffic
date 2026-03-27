@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import logging
 import os
 import time
 from functools import lru_cache
@@ -18,6 +19,8 @@ from agent.rule_based import rule_based_decision
 from agent.state_builder import build_state_prompt
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "google/gemini-2.5-flash")
 
@@ -66,6 +69,7 @@ def decide_signal(
     try:
         decision = asyncio.run(_decide_with_client(state, frame, model_name))
         return decision, "llm", (time.perf_counter() - start) * 1000.0
-    except Exception:
+    except Exception as exc:
+        logger.warning("LLM decision failed, using rule-based fallback: %s", exc)
         fallback = rule_based_decision(state)
         return fallback, "rule_based", (time.perf_counter() - start) * 1000.0

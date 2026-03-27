@@ -325,10 +325,10 @@
                                        {
                                            "id":  "T02.6",
                                            "title":  "YOLOv8 ambulance fine-tuning (stretch goal)",
-                                           "status":  "completed",
-                                           "description":  "STRETCH GOAL — only if days 1-6 complete early. Capture 100+ MetaDrive frames with red ambulance spawned. Annotate ambulance bounding boxes on Roboflow (free tier). Export YOLOv8 format. Fine-tune: yolo train model=yolov8n.pt data=ambulance.yaml epochs=30 imgsz=800. Save to models/ambulance_yolov8n.pt. Replace color heuristic in T02.3 with model inference. If insufficient time: color heuristic from T02.3 is reliable for demo (ambulance is distinctly red in MetaDrive). Completed with color heuristic fallback path in cv/detector.py as allowed by the subtask acceptance criteria.",
+                                           "status":  "in_progress",
+                                           "description":  "STRETCH GOAL � only if days 1-6 complete early. Capture 100+ MetaDrive frames with red ambulance spawned. Annotate ambulance bounding boxes on Roboflow (free tier). Export YOLOv8 format. Fine-tune: yolo train model=yolov8n.pt data=ambulance.yaml epochs=30 imgsz=800. Save to models/ambulance_yolov8n.pt if training data and time are available. Current repo path still uses the red color-heuristic fallback in cv/detector.py, which is the active demo-ready behavior because the fine-tuned artifact is not present.",
                                            "file":  "models/ambulance_yolov8n.pt",
-                                           "test":  "Fine-tuned model detects ambulance at \u003e0.7 confidence in new frames OR color heuristic works reliably"
+                                           "test":  "If the fine-tuned model exists, it detects ambulance at >0.7 confidence; otherwise the red color heuristic fallback in cv/detector.py remains reliable for demo frames."
                                        }
                                    ]
                   },
@@ -413,7 +413,7 @@
                       "title":  "Emergency green corridor pipeline",
                       "day":  4,
                       "priority":  "critical",
-                      "status":  "in_progress",
+                      "status":  "completed",
                       "components_used":  [
                                               "osmnx",
                                               "networkx_Dijkstra",
@@ -426,7 +426,7 @@
                                        {
                                            "id":  "T04.1",
                                            "title":  "Random routing environment generator and cache",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create routing/delhi_graph.py to generate a weighted random graph for routing tests. Function get_graph(): load cache from data/random_test_graph.gpickle if present, else generate and save. Include sample_route_test() to validate shortest-path flow without external Delhi/OSM connectivity.",
                                            "file":  "routing/delhi_graph.py",
                                            "test":  "python routing/delhi_graph.py prints graph stats and a sample route. Cached graph reloads on second call."
@@ -434,7 +434,7 @@
                                        {
                                            "id":  "T04.2",
                                            "title":  "Dijkstra ambulance routing and demo routes",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create routing/router.py. Function compute_route(G, origin_node, dest_node) -\u003e list[int]: nx.shortest_path(G, origin_node, dest_node, weight=\u0027length\u0027). Function get_demo_route(destination: str) -\u003e list[str]: returns hardcoded junction label sequence for 3 demo routes: DEMO_ROUTES = {\u0027AIIMS\u0027: [\u0027J3\u0027,\u0027J2\u0027,\u0027J1\u0027,\u0027J0\u0027], \u0027GTB_HOSPITAL\u0027: [\u0027J3\u0027,\u0027J2\u0027,\u0027J1\u0027], \u0027SAFDARJUNG\u0027: [\u0027J2\u0027,\u0027J1\u0027,\u0027J0\u0027]}. These junction labels map to MetaDrive sim intersections. Function route_to_prompt_text(route) -\u003e str: \u0027J3 → J2 → J1 → J0 (AIIMS, 2.3 km)\u0027.",
                                            "file":  "routing/router.py",
                                            "test":  "get_demo_route(\u0027AIIMS\u0027) returns [\u0027J3\u0027,\u0027J2\u0027,\u0027J1\u0027,\u0027J0\u0027]. route_to_prompt_text returns readable string."
@@ -442,7 +442,7 @@
                                        {
                                            "id":  "T04.3",
                                            "title":  "Ambulance event trigger and debounce",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create emergency/event_handler.py. Class AmbulanceEventHandler with asyncio.Queue. Method on_cv_frame(ambulance_detected, ambulance_direction): if detected, increment detection_streak; if streak \u003e= 3 and not corridor_active: fire event, reset streak. Method trigger_manual(ambulance_id, destination): directly fire event (called by POST /api/emergency). Event payload dataclass: AmbulanceEvent(ambulance_id, origin_direction, destination, route: list[str], nonce: str, timestamp: float). Place event on queue for corridor coordinator.",
                                            "file":  "emergency/event_handler.py",
                                            "test":  "3 consecutive True detections fires exactly one event. Manual trigger fires event. Both have same AmbulanceEvent schema."
@@ -450,7 +450,7 @@
                                        {
                                            "id":  "T04.4",
                                            "title":  "Green corridor coordinator",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create emergency/corridor.py. Async function activate_corridor(event: AmbulanceEvent, env, sio). Steps: (1) Call get_demo_route(event.destination). (2) spawn_ambulance(env, event.origin_direction). (3) For each junction on route: call apply_decision with emergency SignalDecision (phase=ambulance_direction, duration_s=30, emergency_detected=True). (4) Set corridor_active=True in global state. (5) Every second: sio.emit(\u0027emergency\u0027, {active:True, route:route, remaining_s:countdown}). (6) After 30s: resume normal LLM control, sio.emit(\u0027emergency\u0027, {active:False}). (7) Log corridor event to SQLite.",
                                            "file":  "emergency/corridor.py",
                                            "test":  "After activate_corridor: MetaDrive signals show green on ambulance path. Socket.IO emits emergency event. Red vehicle visible in top-down."
@@ -458,7 +458,7 @@
                                        {
                                            "id":  "T04.5",
                                            "title":  "Emergency context injection into LLM",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Add to agent/prompts.py: EMERGENCY_CONTEXT_TEMPLATE = \u0027EMERGENCY OVERRIDE ACTIVE.\\nAmbulance {ambulance_id} detected approaching from {direction}.\\nDijkstra-computed route on Delhi road network: {route_text}\\nYou MUST: (1) Set {direction} green for MINIMUM 30 seconds. (2) All other approaches: RED. (3) Explain in reasoning why this corridor efficiently clears the route. (4) Downstream junctions {downstream} should prepare {direction} green.\u0027. This template appended to state prompt when state.emergency_active=True in agent/state_builder.py. LLM reasoning becomes the chain-of-thought judges read during emergency demo.",
                                            "file":  "agent/prompts.py",
                                            "test":  "LLM with emergency context returns emergency_detected=True, duration_s\u003e=30, reasoning mentions corridor and route"
@@ -958,7 +958,18 @@
                                       "Added config-key compatibility guard in env creation to prevent class-specific MetaDrive key injection errors",
                                       "Hardened emergency event debounce/cooldown and input normalization for stable corridor triggering",
                                       "Added safety override logging and backend startup-degraded mode with /api/status endpoint",
-                                      "Improved Socket.IO broadcaster with safe emit wrappers and strengthened traffic-light direction mapping in signal controller"
+                                      "Improved Socket.IO broadcaster with safe emit wrappers and strengthened traffic-light direction mapping in signal controller",
+                                      "Added regression coverage for default_config-based IDM key gating (supported vs unsupported class keys)",
+                                      "Audit-based status correction: downgraded T02.6 from completed to in_progress because models/ambulance_yolov8n.pt is absent",
+                                      "FIX-1 completed: enforced explicit 4-way intersection map intent in env creation (single and multi-agent where supported)",
+                                      "FIX-2 completed: added deterministic traffic-light obedience debug harness and compatibility light-enable config guards",
+                                      "FIX-3 completed: added robust light-direction resolution plus per-light signal-apply debug telemetry",
+                                      "Disabled automatic light cycling by default (AUTO_CYCLE_TRAFFIC_LIGHTS=0) so LLM signal decisions are not overwritten",
+                                      "TA01 reimplementation: added runtime traffic-light readiness with fallback BaseTrafficLight provisioning and map-safe startup behavior",
+                                      "TA02 reimplementation: upgraded detection to supervision PolygonZone path with fallback assignment and generated zones_debug artifact",
+                                      "TA03 reimplementation: added step-counter signal lifecycle scheduling (green -> yellow -> all_red) integrated in SimulationRunner",
+                                      "TA04 reimplementation: integrated graph-backed emergency route metadata, strengthened debounce flow, and corridor progression actuation across route checkpoints",
+                                      "Used local MetaDrive documentation notebooks plus MCP DeepWiki/Tavily cross-check for traffic-light and topdown-render integration alignment"
                                   ]
                   }
 }

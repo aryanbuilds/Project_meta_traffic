@@ -8,6 +8,8 @@ import time
 import uuid
 from dataclasses import dataclass
 
+from routing.delhi_graph import get_graph
+from routing.router import compute_route
 from routing.router import get_demo_route
 
 
@@ -20,6 +22,8 @@ class AmbulanceEvent:
     origin_direction: str
     destination: str
     route: list[str]
+    route_source: str
+    route_distance_km: float | None
     nonce: str
     timestamp: float
 
@@ -74,11 +78,34 @@ class AmbulanceEventHandler:
         safe_destination = (destination or "AIIMS").strip() or "AIIMS"
 
         route = get_demo_route(safe_destination)
+        route_source = "demo"
+        route_distance_km: float | None = None
+
+        if os.getenv("EMERGENCY_ROUTE_MODE", "graph").strip().lower() == "graph":
+            try:
+                graph = get_graph(force_new=False)
+                nodes = list(graph.nodes())
+                if len(nodes) >= 2:
+                    origin_node = nodes[abs(hash(direction)) % len(nodes)]
+                    dest_node = nodes[abs(hash(safe_destination.upper())) % len(nodes)]
+                    if origin_node != dest_node:
+                        graph_route = compute_route(graph, origin_node, dest_node)
+                        if len(graph_route) >= 2:
+                            route_distance_m = 0.0
+                            for u, v in zip(graph_route, graph_route[1:]):
+                                route_distance_m += float(graph[u][v].get("length", 0.0))
+                            route_distance_km = round(route_distance_m / 1000.0, 2)
+                            route_source = "graph+demo"
+            except Exception:
+                route_source = "demo"
+
         return AmbulanceEvent(
             ambulance_id=(ambulance_id or "AMB_001").strip() or "AMB_001",
             origin_direction=direction,
             destination=safe_destination,
             route=route,
+            route_source=route_source,
+            route_distance_km=route_distance_km,
             nonce=uuid.uuid4().hex,
             timestamp=time.time(),
         )

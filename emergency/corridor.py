@@ -43,7 +43,8 @@ class CorridorCoordinator:
             emergency_direction=event.origin_direction,
             reasoning=(
                 f"Emergency corridor active for {event.ambulance_id}, "
-                f"route={route_to_prompt_text(event.route, event.destination)}"
+                f"route={route_to_prompt_text(event.route, event.destination)} "
+                f"source={getattr(event, 'route_source', 'demo')}"
             ),
         )
 
@@ -57,11 +58,18 @@ class CorridorCoordinator:
                     "route": event.route,
                     "remaining_s": self.state.remaining_s,
                     "ambulance_id": event.ambulance_id,
+                    "route_source": getattr(event, "route_source", "demo"),
+                    "route_distance_km": getattr(event, "route_distance_km", None),
+                    "active_junction": event.route[0] if event.route else None,
                 },
             )
 
+        route = list(event.route) if event.route else ["J0"]
         for remaining in range(hold_s, 0, -1):
             self.state.remaining_s = remaining
+            route_idx = (hold_s - remaining) % max(1, len(route))
+            active_junction = route[route_idx]
+            apply_decision(env, emergency_decision, step=(hold_s - remaining))
             if sio is not None:
                 await sio.emit(
                     "emergency",
@@ -70,6 +78,9 @@ class CorridorCoordinator:
                         "route": event.route,
                         "remaining_s": remaining,
                         "ambulance_id": event.ambulance_id,
+                        "active_junction": active_junction,
+                        "route_source": getattr(event, "route_source", "demo"),
+                        "route_distance_km": getattr(event, "route_distance_km", None),
                     },
                 )
             await asyncio.sleep(1)

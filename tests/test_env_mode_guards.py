@@ -23,6 +23,13 @@ def test_multi_agent_mode_idm_sets_conservative_policy(monkeypatch):
     captured = {}
 
     class FakeMultiAgentEnv:
+        @staticmethod
+        def default_config():
+            return {
+                "enable_idm_lane_change": False,
+                "disable_idm_deceleration": False,
+            }
+
         def __init__(self, cfg):
             captured["cfg"] = cfg
 
@@ -37,3 +44,26 @@ def test_multi_agent_mode_idm_sets_conservative_policy(monkeypatch):
     assert cfg["disable_idm_deceleration"] is False
     assert pytest.approx(2.4) == getattr(cfg["agent_policy"], "TIME_WANTED")
     assert pytest.approx(16.0) == getattr(cfg["agent_policy"], "DISTANCE_WANTED")
+
+
+def test_multi_agent_mode_skips_unsupported_idm_keys(monkeypatch):
+    monkeypatch.setenv("SIM_ENV_MODE", "multi_agent")
+    monkeypatch.setenv("AGENT_POLICY_MODE", "idm")
+
+    captured = {}
+
+    class FakeMultiAgentEnv:
+        @staticmethod
+        def default_config():
+            return {"num_agents": 4}
+
+        def __init__(self, cfg):
+            captured["cfg"] = cfg
+
+    monkeypatch.setattr(intersection_env, "MultiAgentIntersectionEnv", FakeMultiAgentEnv)
+
+    intersection_env.create_intersection_env()
+    cfg = captured["cfg"]
+    assert "agent_policy" in cfg
+    assert "enable_idm_lane_change" not in cfg
+    assert "disable_idm_deceleration" not in cfg

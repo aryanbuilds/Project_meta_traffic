@@ -19,10 +19,17 @@ from agent.signal_controller import apply_decision
 from cv.annotator import annotate_frame
 from cv.detector import detect_zones
 from cv.pce_calculator import compute_all_zones
+from cv.zone_config import save_zones_debug_image
 from data.logger import get_kpi_summary, log_decision
 from emergency.corridor import CorridorCoordinator
 from emergency.event_handler import AmbulanceEventHandler
-from envs.intersection_env import cycle_traffic_lights, create_intersection_env, render_topdown_frame, save_test_frame
+from envs.intersection_env import (
+    cycle_traffic_lights,
+    create_intersection_env,
+    ensure_traffic_lights_ready,
+    render_topdown_frame,
+    save_test_frame,
+)
 
 
 class SimulationRunner:
@@ -62,6 +69,8 @@ class SimulationRunner:
         self.llm_interval = max(1, int(os.getenv("LLM_DECISION_INTERVAL", "10")))
         self.emergency_hold_s = max(15, int(os.getenv("EMERGENCY_HOLD_S", "30")))
         self.yolo_inference_rate = max(1, int(os.getenv("YOLO_INFERENCE_RATE", "3")))
+        self.yellow_duration_s = max(2, int(os.getenv("YELLOW_DURATION_S", "5")))
+        self.auto_cycle_traffic_lights = os.getenv("AUTO_CYCLE_TRAFFIC_LIGHTS", "0").strip() == "1"
         self.broadcaster = SimBroadcaster(sio, fps_cap=int(os.getenv("BROADCAST_FPS_CAP", "10"))) if sio else None
         self._last_detection = {
             "north": [],
@@ -75,6 +84,8 @@ class SimulationRunner:
 
         self.event_handler = AmbulanceEventHandler()
         self.corridor = CorridorCoordinator()
+        self._active_decision = None
+        self._active_decision_start_step = -1
 
     async def start(self) -> dict:
         if self.running:
@@ -126,6 +137,8 @@ class SimulationRunner:
         self._reset_env()
         self.step = 0
         self.latest_decision = None
+        self._active_decision = None
+        self._active_decision_start_step = -1
         self.last_decision_step = -1
         self.wait_s = {"north": 0, "south": 0, "east": 0, "west": 0}
         self._last_detection = {
@@ -200,7 +213,8 @@ class SimulationRunner:
         else:
             obs, terminated, truncated, info = self._parse_single_agent_step(step_tuple)
 
-        cycle_traffic_lights(self.env, self.step)
+        if self.auto_cycle_traffic_lights:
+            cycle_traffic_lights(self.env, self.step)
 
         if terminated or truncated:
             self.episodes_completed += 1
@@ -227,18 +241,27 @@ class SimulationRunner:
             detection = self._last_detection
         zone_pce = compute_all_zones(detection, wait_s=self.wait_s)
 
-        await self._handle_emergency_detection(detection)
+        await self._handle_emergency_detection(detection, fresh=should_infer)
         await self._pump_emergency_queue()
 
+        self._apply_signal_schedule()
+
         decision_payload = self.latest_decision
-        if self._should_decide_now():
+        if not self.corridor.state.active and self._should_decide_now():
             state = self._build_state(zone_pce, detection)
             decision, controller_type, latency_ms = await asyncio.to_thread(decide_signal, state, frame)
             safe_decision = enforce_safety(decision, state)
-            apply_decision(self.env, safe_decision, step=self.step)
+            self._active_decision = safe_decision
+            self._active_decision_start_step = self.step
+            self._apply_signal_schedule()
+            signal_debug = os.getenv("SIGNAL_DEBUG", "0").strip() == "1"
+            signal_result = apply_decision(self.env, safe_decision, step=self.step, debug=signal_debug, control_mode="normal")
+            if signal_debug:
+                print(f"SIGNAL_DEBUG step={self.step} result={signal_result}")
 
             self.latest_decision = safe_decision.model_dump()
             self.last_decision_step = self.step
+            self.latest_decision["yellow_phase"] = False
             decision_payload = self.latest_decision
 
             self._update_waits(zone_pce, safe_decision.phase)
@@ -268,7 +291,14 @@ class SimulationRunner:
                 )
                 await self.broadcaster.emit_kpi(get_kpi_summary(), step=self.step)
         else:
-            phase = self.latest_decision["phase"] if self.latest_decision else "north_south"
+            if self._active_decision is not None:
+                elapsed = max(0, self.step - self._active_decision_start_step)
+                in_yellow = elapsed >= int(self._active_decision.duration_s)
+                phase = "none" if in_yellow else str(self._active_decision.phase)
+                if self.latest_decision is not None:
+                    self.latest_decision["yellow_phase"] = in_yellow
+            else:
+                phase = self.latest_decision["phase"] if self.latest_decision else "north_south"
             self._update_waits(zone_pce, phase)
 
         if self.broadcaster is not None:
@@ -281,7 +311,9 @@ class SimulationRunner:
             self.fps = 1.0 / dt
         self._last_tick = time.perf_counter()
 
-    async def _handle_emergency_detection(self, detection: dict) -> None:
+    async def _handle_emergency_detection(self, detection: dict, fresh: bool = True) -> None:
+        if not fresh:
+            return
         detected = bool(detection.get("ambulance_detected", False))
         direction = detection.get("ambulance_direction")
         await self.event_handler.on_cv_frame(detected, direction)
@@ -337,7 +369,9 @@ class SimulationRunner:
     def _update_waits(self, zone_pce: dict[str, dict], phase: str) -> None:
         for direction in ("north", "south", "east", "west"):
             has_vehicles = int(zone_pce[direction]["count"]) > 0
-            if has_vehicles and not phase_serves_direction(phase, direction):
+            if phase == "none":
+                self.wait_s[direction] = self.wait_s[direction] + 1 if has_vehicles else 0
+            elif has_vehicles and not phase_serves_direction(phase, direction):
                 self.wait_s[direction] += 1
             else:
                 self.wait_s[direction] = 0
@@ -346,6 +380,8 @@ class SimulationRunner:
         return sum(self.wait_s.values()) / 4.0
 
     def _should_decide_now(self) -> bool:
+        if self._active_decision is None:
+            return True
         return self.last_decision_step < 0 or (self.step - self.last_decision_step) >= self.llm_interval
 
     def _incident_throttle_scale(self) -> float:
@@ -530,6 +566,7 @@ class SimulationRunner:
     def _reset_env(self) -> None:
         assert self.env is not None
         reset_out = self.env.reset()
+        ensure_traffic_lights_ready(self.env)
         self.episode_index += 1
         self._single_incident_latched = {"crash_vehicle": False, "out_of_road": False}
         self._multi_incident_latched = {}
@@ -570,6 +607,28 @@ class SimulationRunner:
             self.episode_start_pos = None
             self.episode_target = ""
 
+        try:
+            save_zones_debug_image("data/zones_debug.png")
+        except Exception:
+            pass
+
+    def _apply_signal_schedule(self) -> None:
+        if self.env is None or self._active_decision is None:
+            return
+
+        elapsed = max(0, self.step - self._active_decision_start_step)
+        green_s = int(self._active_decision.duration_s)
+        yellow_s = int(self.yellow_duration_s)
+        if elapsed < green_s:
+            apply_decision(self.env, self._active_decision, step=self.step, control_mode="normal")
+            return
+        if elapsed < green_s + yellow_s:
+            apply_decision(self.env, self._active_decision, step=self.step, control_mode="yellow_all")
+            return
+        apply_decision(self.env, self._active_decision, step=self.step, control_mode="all_red")
+        self._active_decision = None
+        self._active_decision_start_step = -1
+
 
 async def run(steps: int = 300) -> None:
     runner = SimulationRunner(sio=None)
@@ -589,6 +648,8 @@ async def run(steps: int = 300) -> None:
 
 if __name__ == "__main__":
     asyncio.run(run())
+
+
 
 
 
