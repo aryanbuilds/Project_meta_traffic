@@ -64,6 +64,23 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _supports_config_key(env_cls: type[Any], key: str) -> bool:
+    """Guard class-specific config keys to avoid MetaDrive KeyError on startup."""
+    try:
+        defaults = env_cls.default_config()
+    except Exception:
+        return False
+    try:
+        return key in defaults
+    except Exception:
+        return False
+
+
+def _set_if_supported(config: dict[str, Any], env_cls: type[Any], key: str, value: Any) -> None:
+    if _supports_config_key(env_cls, key):
+        config[key] = value
+
+
 def _safe_idm_policy_cls(base_cls: type[Any]) -> type[Any]:
     if not _env_bool("IDM_CONSERVATIVE_MODE", True):
         return base_cls
@@ -79,28 +96,6 @@ def _safe_idm_policy_cls(base_cls: type[Any]) -> type[Any]:
         ),
     }
     return type("ConservativeIDMPolicy", (base_cls,), attrs)
-
-
-def _supports_config_key(env_cls: type[Any], key: str) -> bool:
-    """Best-effort check for whether an env class accepts a config key."""
-    default_config = getattr(env_cls, "default_config", None)
-    if not callable(default_config):
-        return True
-    try:
-        cfg = default_config()
-    except Exception:
-        return True
-
-    if isinstance(cfg, dict):
-        return key in cfg
-
-    try:
-        keys = getattr(cfg, "keys", None)
-        if callable(keys):
-            return key in keys()
-        return key in cfg  # Config-like objects implement membership.
-    except Exception:
-        return True
 
 
 def _screen_size() -> tuple[int, int]:
@@ -162,7 +157,6 @@ def create_intersection_env(config: dict[str, Any] | None = None) -> Any:
         )
 
     if use_multi and MultiAgentIntersectionEnv is not None:
-        target_cls = MultiAgentIntersectionEnv
         merged = dict(DEFAULT_MULTI_ENV_CONFIG)
         merged["num_agents"] = _env_int("MULTI_AGENT_COUNT", merged["num_agents"])
         merged["allow_respawn"] = _env_bool("MULTI_ALLOW_RESPAWN", merged["allow_respawn"])
@@ -182,17 +176,24 @@ def create_intersection_env(config: dict[str, Any] | None = None) -> Any:
             from metadrive.policy.idm_policy import IDMPolicy
 
             merged["agent_policy"] = _safe_idm_policy_cls(IDMPolicy)
-            if _supports_config_key(target_cls, "enable_idm_lane_change"):
-                merged["enable_idm_lane_change"] = _env_bool("IDM_ENABLE_LANE_CHANGE", False)
-            if _supports_config_key(target_cls, "disable_idm_deceleration"):
-                merged["disable_idm_deceleration"] = _env_bool("IDM_DISABLE_DECELERATION", False)
+            _set_if_supported(
+                merged,
+                MultiAgentIntersectionEnv,
+                "enable_idm_lane_change",
+                _env_bool("IDM_ENABLE_LANE_CHANGE", False),
+            )
+            _set_if_supported(
+                merged,
+                MultiAgentIntersectionEnv,
+                "disable_idm_deceleration",
+                _env_bool("IDM_DISABLE_DECELERATION", False),
+            )
 
         if config:
             merged.update(config)
         return MultiAgentIntersectionEnv(merged)
 
     merged = dict(DEFAULT_ENV_CONFIG)
-    target_cls = MetaDriveEnv
     merged["start_seed"] = _env_int("SIM_SEED", merged["start_seed"])
     merged["num_scenarios"] = _env_int("METADRIVE_NUM_SCENARIOS", merged["num_scenarios"])
     merged["map"] = os.getenv("METADRIVE_MAP", merged["map"])
@@ -204,10 +205,18 @@ def create_intersection_env(config: dict[str, Any] | None = None) -> Any:
         from metadrive.policy.idm_policy import IDMPolicy
 
         merged["agent_policy"] = _safe_idm_policy_cls(IDMPolicy)
-        if _supports_config_key(target_cls, "enable_idm_lane_change"):
-            merged["enable_idm_lane_change"] = _env_bool("IDM_ENABLE_LANE_CHANGE", False)
-        if _supports_config_key(target_cls, "disable_idm_deceleration"):
-            merged["disable_idm_deceleration"] = _env_bool("IDM_DISABLE_DECELERATION", False)
+        _set_if_supported(
+            merged,
+            MetaDriveEnv,
+            "enable_idm_lane_change",
+            _env_bool("IDM_ENABLE_LANE_CHANGE", False),
+        )
+        _set_if_supported(
+            merged,
+            MetaDriveEnv,
+            "disable_idm_deceleration",
+            _env_bool("IDM_DISABLE_DECELERATION", False),
+        )
 
     if "CRASH_VEHICLE_DONE" in os.environ:
         merged["crash_vehicle_done"] = _env_bool("CRASH_VEHICLE_DONE", True)

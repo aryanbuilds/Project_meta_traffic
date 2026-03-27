@@ -23,11 +23,21 @@ async def lifespan(app: FastAPI):
     init_db()
     runner = SimulationRunner(sio=sio)
     app.state.runner = runner
-    await runner.start()
+    app.state.startup_error = None
+
+    try:
+        await runner.start()
+    except Exception as exc:  # noqa: BLE001
+        # Keep API alive so operator can inspect status and retry via /api/control.
+        app.state.startup_error = str(exc)
+
     try:
         yield
     finally:
-        await runner.stop()
+        try:
+            await runner.stop()
+        except Exception:
+            pass
 
 
 app = FastAPI(title="NeuroSignal Backend", version="0.1.0", lifespan=lifespan)
@@ -53,9 +63,21 @@ async def disconnect(sid):
     return None
 
 
+def _status_with_startup_error(app_obj: FastAPI) -> dict:
+    status = app_obj.state.runner.status()
+    if app_obj.state.startup_error:
+        status["startup_error"] = app_obj.state.startup_error
+    return status
+
+
 @app.get("/health")
 async def health() -> dict:
-    return app.state.runner.status()
+    return _status_with_startup_error(app)
+
+
+@app.get("/api/status")
+async def status() -> dict:
+    return _status_with_startup_error(app)
 
 
 @app.post("/api/control")
@@ -63,6 +85,7 @@ async def control(req: ControlRequest) -> dict:
     runner: SimulationRunner = app.state.runner
     if req.action == "start":
         await runner.start()
+        app.state.startup_error = None
     elif req.action == "pause":
         await runner.pause()
     elif req.action == "resume":
@@ -71,7 +94,7 @@ async def control(req: ControlRequest) -> dict:
         await runner.stop()
     elif req.action == "reset":
         await runner.reset()
-    return runner.status()
+    return _status_with_startup_error(app)
 
 
 @app.post("/api/emergency")
@@ -99,6 +122,8 @@ async def kpi() -> dict:
     out["step"] = runner.step
     out["running"] = runner.running
     out["paused"] = runner.paused
+    if app.state.startup_error:
+        out["startup_error"] = app.state.startup_error
     return out
 
 

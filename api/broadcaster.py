@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any
 
 from cv.annotator import to_base64_jpeg
+
+logger = logging.getLogger(__name__)
 
 
 class SimBroadcaster:
@@ -16,12 +19,18 @@ class SimBroadcaster:
         self._last_frame_emit = 0.0
         self._last_kpi_emit = 0.0
 
+    async def _safe_emit(self, event: str, payload: dict[str, Any]) -> None:
+        try:
+            await self.sio.emit(event, payload)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Socket emit failed for event=%s: %s", event, exc)
+
     async def emit_frame(self, jpeg_bytes: bytes, step: int) -> None:
         now = time.monotonic()
         if now - self._last_frame_emit < self.frame_interval_s:
             return
         self._last_frame_emit = now
-        await self.sio.emit(
+        await self._safe_emit(
             "frame",
             {
                 "schema_version": 1,
@@ -39,7 +48,7 @@ class SimBroadcaster:
         controller_type: str,
         latency_ms: float,
     ) -> None:
-        await self.sio.emit(
+        await self._safe_emit(
             "decision",
             {
                 "schema_version": 1,
@@ -52,7 +61,7 @@ class SimBroadcaster:
         )
 
     async def emit_zones(self, zone_pce: dict[str, dict], step: int) -> None:
-        await self.sio.emit(
+        await self._safe_emit(
             "zones",
             {
                 "schema_version": 1,
@@ -67,7 +76,7 @@ class SimBroadcaster:
         if now - self._last_kpi_emit < self.kpi_interval_s:
             return
         self._last_kpi_emit = now
-        await self.sio.emit(
+        await self._safe_emit(
             "kpi",
             {
                 "schema_version": 1,
@@ -83,4 +92,4 @@ class SimBroadcaster:
             "timestamp": time.time(),
         }
         body.update(payload)
-        await self.sio.emit("emergency", body)
+        await self._safe_emit("emergency", body)

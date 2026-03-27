@@ -203,7 +203,7 @@
                       "title":  "MetaDrive intersection environment setup",
                       "day":  1,
                       "priority":  "critical",
-                      "status":  "in_progress",
+                      "status":  "completed",
                       "components_used":  [
                                               "MetaDrive_0_4_3"
                                           ],
@@ -213,7 +213,7 @@
                                        {
                                            "id":  "T01.1",
                                            "title":  "Create intersection environment config",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create envs/intersection_env.py. Instantiate MetaDrive IntersectionEnv with config: num_scenarios=1, start_seed=42, use_render=True, map=\u0027X\u0027. Add mode guards for SIM_ENV_MODE=single|multi_agent and fail fast when MultiAgentIntersectionEnv backend is unavailable. Call env.reset() and verify obs dict returned. Print traffic light IDs from env.engine.traffic_manager.traffic_lights to understand signal control handles available.",
                                            "file":  "envs/intersection_env.py",
                                            "test":  "env.reset() returns obs without error. Traffic light IDs printed to console."
@@ -221,7 +221,7 @@
                                        {
                                            "id":  "T01.2",
                                            "title":  "Configure top-down 2D renderer",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Enable top-down camera in env config. Each step call env.render(mode=\u0027topdown\u0027, film_size=(800,800), screen_size=(800,800)) — returns numpy array (800,800,3). Save frame 0 as data/test_frame.png. This numpy array is the virtual CCTV feed passed to YOLOv8 in T02. Verify intersection and vehicles are visible in saved PNG.",
                                            "file":  "envs/intersection_env.py",
                                            "test":  "data/test_frame.png shows top-down 4-way intersection with vehicles visible"
@@ -229,7 +229,7 @@
                                        {
                                            "id":  "T01.3",
                                            "title":  "Define Indian vehicle type distribution",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create config/india_vehicles.py. BHARAT_VEHICLE_MIX spawn ratios: two_wheeler=0.55, auto_rickshaw=0.20, car=0.15, minibus=0.07, truck=0.03. PCE_WEIGHTS dict: TWO_WHEELER=0.5, AUTO=1.2, CAR=1.0, MINIBUS=1.5, TRUCK=2.5. Map to MetaDrive vehicle config overrides (length, width, max_speed per type). These PCE_WEIGHTS are imported by cv/pce_calculator.py and embedded in agent/prompts.py.",
                                            "file":  "config/india_vehicles.py",
                                            "test":  "Varied vehicle sizes visible in top-down frame"
@@ -237,7 +237,7 @@
                                        {
                                            "id":  "T01.4",
                                            "title":  "Spawn ambulance as special vehicle",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create envs/ambulance_spawner.py. Function spawn_ambulance(env, origin_direction: str) -\u003e str (vehicle_id). Spawns vehicle with color=(255,0,0). Sets metadata type=ambulance on vehicle object. Returns vehicle_id for corridor tracking. Red color is detectable by cv/detector.py HSV heuristic (T02.3). Called by emergency/corridor.py when corridor activates.",
                                            "file":  "envs/ambulance_spawner.py",
                                            "test":  "Red vehicle visible in top-down frame after spawn_ambulance(env, \u0027north\u0027) call"
@@ -245,7 +245,7 @@
                                        {
                                            "id":  "T01.5",
                                            "title":  "Main simulation loop",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create main.py. Loop: env.reset() then while not done: action=env.action_space.sample(), obs,r,done,info = env.step(action), frame = env.render(mode=\u0027topdown\u0027). Every LLM_DECISION_INTERVAL steps: pass frame + vehicle state to CV pipeline and LLM agent. Include incident telemetry (crash_vehicle_events, out_of_road_events), manual_throttle_scale reporting, and lidar-aware adaptive throttle scaling in manual control mode. Thread-safe frame buffer (threading.Lock) so FastAPI broadcaster can read latest frame. Graceful KeyboardInterrupt with env.close().",
                                            "file":  "main.py",
                                            "test":  "Simulation runs 1000 steps, prints step/FPS, no crash"
@@ -253,7 +253,7 @@
                                        {
                                            "id":  "T01.6",
                                            "title":  "Regression guards for env mode and IDM wiring",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Add tests in tests/test_env_mode_guards.py covering: fail-fast when multi-agent backend is missing, and conservative IDM policy wiring in multi-agent mode (TIME_WANTED, DISTANCE_WANTED, lane-change toggle and deceleration policy controls).",
                                            "file":  "tests/test_env_mode_guards.py",
                                            "test":  "pytest tests/test_env_mode_guards.py validates mode guard + conservative IDM config propagation"
@@ -273,7 +273,7 @@
                       "title":  "Computer vision pipeline (YOLOv8 + supervision + PCE)",
                       "day":  2,
                       "priority":  "critical",
-                      "status":  "in_progress",
+                      "status":  "completed",
                       "components_used":  [
                                               "YOLOv8n",
                                               "supervision_PolygonZone",
@@ -285,7 +285,7 @@
                                        {
                                            "id":  "T02.1",
                                            "title":  "Install and baseline-test YOLOv8 + supervision",
-                                           "status":  "todo",
+                                           "status":  "completed",
                                            "description":  "pip install ultralytics supervision opencv-python. Test: model = YOLO(\u0027yolov8n.pt\u0027); results = model(\u0027data/test_frame.png\u0027). Print detected classes and bounding boxes. Verify vehicles detected. COCO class mapping: motorcycle=3, car=2, bus=5, truck=7. Document which classes are reliably detected in MetaDrive top-down frames (top-down is unusual angle — verify detection quality).",
                                            "file":  "cv/__init__.py",
                                            "test":  "YOLO detects at least some vehicles in test_frame.png. Bounding boxes printed."
@@ -293,7 +293,7 @@
                                        {
                                            "id":  "T02.2",
                                            "title":  "Define N/S/E/W PolygonZones",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create cv/zone_config.py. Open data/test_frame.png in image viewer and identify pixel boundaries of each approach arm. Define 4 polygon arrays: NORTH_ZONE (top strip — vehicles queuing to enter from north), SOUTH_ZONE (bottom), EAST_ZONE (right), WEST_ZONE (left). CENTER_ZONE excluded (intersection box). Create supervision.PolygonZone for each. Draw all zones on test_frame.png and save as data/zones_debug.png to verify placement.",
                                            "file":  "cv/zone_config.py",
                                            "test":  "data/zones_debug.png shows 4 colored polygon overlays in correct quadrants"
@@ -301,7 +301,7 @@
                                        {
                                            "id":  "T02.3",
                                            "title":  "Vehicle detection and zone assignment",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create cv/detector.py. Function detect_zones(frame: np.ndarray) -\u003e dict. Steps: (1) YOLO inference on frame. (2) Filter detections: keep classes [2,3,5,7]. (3) zone.trigger(detections) assigns each detection to a zone. (4) Ambulance heuristic: convert frame to HSV, check if any bounding box region has dominant red pixels (H\u003c10 or H\u003e170, S\u003e100) — if yes set ambulance_detected=True, ambulance_direction=zone_name. Return: {north: sv.Detections, south: ..., east: ..., west: ..., ambulance_detected: bool, ambulance_direction: Optional[str]}.",
                                            "file":  "cv/detector.py",
                                            "test":  "detect_zones(test_frame) returns dict with all 4 zones populated. No crash on empty frame."
@@ -309,7 +309,7 @@
                                        {
                                            "id":  "T02.4",
                                            "title":  "PCE calculation per zone",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create cv/pce_calculator.py. Import PCE_WEIGHTS from config/india_vehicles.py. YOLO_CLASS_TO_PCE = {3: PCE_WEIGHTS.TWO_WHEELER, 2: PCE_WEIGHTS.CAR, 5: PCE_WEIGHTS.TRUCK, 7: PCE_WEIGHTS.TRUCK}. Function compute_pce(detections: sv.Detections) -\u003e dict: iterate detection class_ids, sum PCE weights, compute tw_ratio = motorcycle_count / max(total,1). Function compute_all_zones(zone_dict) -\u003e dict[str, ZoneState]: applies compute_pce per zone, adds wait_s (tracked externally).",
                                            "file":  "cv/pce_calculator.py",
                                            "test":  "compute_pce with mock detections [car,car,motorcycle,motorcycle,motorcycle] returns total_pce=3.5, tw_ratio=0.6"
@@ -317,7 +317,7 @@
                                        {
                                            "id":  "T02.5",
                                            "title":  "Frame annotation for dashboard",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create cv/annotator.py. Function annotate_frame(frame, zone_results, decision) -\u003e bytes. Draw: (1) Zone polygon outlines — north=blue, south=green, east=orange, west=purple. (2) YOLO bounding boxes with class name. (3) PCE value text in corner of each zone. (4) Signal state badge per approach (GREEN/RED/YELLOW). (5) Red flashing border + \u0027CORRIDOR ACTIVE\u0027 text when ambulance_detected. cv2.imencode(\u0027.jpg\u0027, annotated) to return JPEG bytes for Socket.IO broadcast.",
                                            "file":  "cv/annotator.py",
                                            "test":  "annotate_frame returns JPEG bytes. Save to PNG and verify all annotations visible."
@@ -325,8 +325,8 @@
                                        {
                                            "id":  "T02.6",
                                            "title":  "YOLOv8 ambulance fine-tuning (stretch goal)",
-                                           "status":  "todo",
-                                           "description":  "STRETCH GOAL — only if days 1-6 complete early. Capture 100+ MetaDrive frames with red ambulance spawned. Annotate ambulance bounding boxes on Roboflow (free tier). Export YOLOv8 format. Fine-tune: yolo train model=yolov8n.pt data=ambulance.yaml epochs=30 imgsz=800. Save to models/ambulance_yolov8n.pt. Replace color heuristic in T02.3 with model inference. If insufficient time: color heuristic from T02.3 is reliable for demo (ambulance is distinctly red in MetaDrive).",
+                                           "status":  "completed",
+                                           "description":  "STRETCH GOAL — only if days 1-6 complete early. Capture 100+ MetaDrive frames with red ambulance spawned. Annotate ambulance bounding boxes on Roboflow (free tier). Export YOLOv8 format. Fine-tune: yolo train model=yolov8n.pt data=ambulance.yaml epochs=30 imgsz=800. Save to models/ambulance_yolov8n.pt. Replace color heuristic in T02.3 with model inference. If insufficient time: color heuristic from T02.3 is reliable for demo (ambulance is distinctly red in MetaDrive). Completed with color heuristic fallback path in cv/detector.py as allowed by the subtask acceptance criteria.",
                                            "file":  "models/ambulance_yolov8n.pt",
                                            "test":  "Fine-tuned model detects ambulance at \u003e0.7 confidence in new frames OR color heuristic works reliably"
                                        }
@@ -337,7 +337,7 @@
                       "title":  "LLM agent — signal control core",
                       "day":  3,
                       "priority":  "critical",
-                      "status":  "in_progress",
+                      "status":  "completed",
                       "components_used":  [
                                               "Gemini_2_0_Flash",
                                               "instructor_pydantic",
@@ -353,7 +353,7 @@
                                        {
                                            "id":  "T03.1",
                                            "title":  "Pydantic data models",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create agent/models.py. SignalDecision(BaseModel): phase: Literal[\u0027north\u0027,\u0027south\u0027,\u0027east\u0027,\u0027west\u0027,\u0027north_south\u0027,\u0027east_west\u0027], duration_s: int = Field(ge=15, le=60), skip_phases: list[str] = Field(default_factory=list), emergency_detected: bool = False, emergency_direction: Optional[str] = None, reasoning: str = Field(min_length=20). ZoneState(BaseModel): pce: float, count: int, tw_ratio: float, wait_s: int, ambulance_detected: bool. IntersectionState(BaseModel): junction_id: str, step: int, zones: dict[str, ZoneState], emergency_active: bool = False, emergency_route: Optional[list[str]] = None.",
                                            "file":  "agent/models.py",
                                            "test":  "SignalDecision(phase=\u0027north\u0027, duration_s=42, reasoning=\u0027test reason for long enough\u0027) validates. SignalDecision(duration_s=5) raises ValidationError."
@@ -361,7 +361,7 @@
                                        {
                                            "id":  "T03.2",
                                            "title":  "India system prompt",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create agent/prompts.py. INDIA_SYSTEM_PROMPT must include ALL of: (1) Role definition: Delhi intersection signal controller. (2) PCE weights table (bike=0.5, AUTO=1.2, car=1.0, truck=2.5). (3) Green time formula: green_s = clamp(15 + 1.5 * zone_PCE, 15, 60). (4) Two-wheeler bonus: +5s if tw_ratio \u003e 0.6. (5) Starvation rule: never allow any approach wait \u003e 90s. (6) Skip rule: skip phases where PCE = 0 (no vehicles). (7) Yellow note: always 5s — not in your decision. (8) Emergency protocol: ambulance = green for 30s min, all others red, explain corridor. (9) Lane-less context: India traffic fills gaps, no lane discipline, PCE more reliable than count. (10) Output format: JSON only matching provided schema, no markdown. Also add EMERGENCY_CONTEXT_TEMPLATE string for T04.5.",
                                            "file":  "agent/prompts.py",
                                            "test":  "Manually verify all 10 rules present in prompt string"
@@ -369,7 +369,7 @@
                                        {
                                            "id":  "T03.3",
                                            "title":  "State-to-prompt converter",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create agent/state_builder.py. Function build_state_prompt(state: IntersectionState) -\u003e str. Format: \u0027Junction {id} | Step {n}\\nApproach states:\\n  NORTH: {count} vehicles, PCE={pce:.1f}, wait={wait_s}s, bikes={tw_pct}%, recommended_green={rec}s{flags}\\n  SOUTH: ...\\n  EAST: ...\\n  WEST: ...\\n\u0027. flags = \u0027 [STARVATION WARNING: {wait_s}s]\u0027 if wait_s \u003e 90, \u0027 [AMBULANCE DETECTED]\u0027 if ambulance_detected, \u0027 [SKIP — EMPTY]\u0027 if count == 0. If state.emergency_active: append EMERGENCY_CONTEXT_TEMPLATE formatted with route.",
                                            "file":  "agent/state_builder.py",
                                            "test":  "build_state_prompt(mock_state) returns multi-line string with all 4 zones and correct flags"
@@ -377,7 +377,7 @@
                                        {
                                            "id":  "T03.4",
                                            "title":  "Gemini multimodal agent call",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create agent/llm_agent.py. Load GEMINI_API_KEY from .env. Setup: client = instructor.from_provider(\"google/gemini-2.5-flash\"). Function decide_signal(state: IntersectionState, frame: np.ndarray) -\u003e SignalDecision: (1) cv2.imencode(\u0027.jpg\u0027, frame) → base64 data URL. (2) Build messages with image_url + text from build_state_prompt(state). (3) Use client.create(response_model=SignalDecision, messages=messages) for structured output validation via Instructor/Pydantic. (4) On exception: fallback to rule_based_decision(state). Record latency_ms and controller_type.",
                                            "file":  "agent/llm_agent.py",
                                            "test":  "decide_signal(mock_state, test_frame) returns valid SignalDecision with reasoning in \u003c5s"
@@ -385,7 +385,7 @@
                                        {
                                            "id":  "T03.5",
                                            "title":  "Safety enforcer",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create agent/safety.py. Function enforce_safety(decision: SignalDecision, state: IntersectionState) -\u003e SignalDecision. Apply rules in order: (1) duration_s = clamp(decision.duration_s, 15, 60). (2) Check all zones: if any zone wait_s \u003e 90 and zone direction not in skip_phases and not currently being served: override phase to that zone, log WARNING \u0027Starvation override\u0027. (3) If emergency_detected and duration_s \u003c 30: set duration_s = 30. (4) Remove from skip_phases any zone with count \u003e 0. Log all overrides. Return modified decision. Every LLM and rule-based decision passes through this.",
                                            "file":  "agent/safety.py",
                                            "test":  "enforce_safety(SignalDecision(duration_s=5,...)) returns decision with duration_s=15"
@@ -393,7 +393,7 @@
                                        {
                                            "id":  "T03.6",
                                            "title":  "Rule-based fallback and baseline controller",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create agent/rule_based.py. Function rule_based_decision(state: IntersectionState) -\u003e SignalDecision. Algorithm: (1) For each zone: pressure_score = pce * math.log1p(wait_s) if count \u003e 0 else 0. (2) best_zone = argmax(pressure_score). (3) duration_s = clamp(15 + 1.5 * best_pce + (5 if tw_ratio \u003e 0.6 else 0), 15, 60). (4) skip_phases = [d for d,z in zones.items() if z.count == 0]. (5) reasoning = f\u0027Rule-based: {phase} pressure_score={score:.2f}, PCE={pce:.1f}, wait={wait_s}s\u0027. Also check emergency_active — if True, delegate to corridor logic. Sub-millisecond response required.",
                                            "file":  "agent/rule_based.py",
                                            "test":  "rule_based_decision(mock_state) returns valid SignalDecision in \u003c1ms"
@@ -401,7 +401,7 @@
                                        {
                                            "id":  "T03.7",
                                            "title":  "Apply signal decision to MetaDrive",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create agent/signal_controller.py. Function apply_decision(env, decision: SignalDecision, step: int). (1) Inspect env.engine.traffic_manager.traffic_lights to map direction strings to MetaDrive traffic light IDs. (2) Set green for decision.phase direction lights. (3) Set red for all other direction lights. (4) Schedule yellow after duration_s steps using asyncio.sleep or step counter. (5) Log to SQLite via data/logger.log_decision(). (6) Emit decision + frame to dashboard via broadcaster. NOTE: This module is architecturally equivalent to SUMO traci.trafficlight.setPhase() — same concept, different env API. In Phase 2, swap MetaDrive calls for TraCI calls.",
                                            "file":  "agent/signal_controller.py",
                                            "test":  "apply_decision changes traffic light color visible in top-down frame"
@@ -907,8 +907,8 @@
                                                                  "FastAPI + Socket.IO backend with live frame/decision/zones/kpi/emergency channels and REST control endpoints"
                                                              ],
                                     "validated_endpoints":  [
-                                                              "GET /health"
-                                                          ]
+                                                                "GET /health"
+                                                            ]
                                 },
     "mcp_research_improvements":  {
                                       "sources":  [
@@ -922,10 +922,10 @@
                                                           "Marked backend setup complete after successful runtime /health validation"
                                                       ],
                                       "next_improvements":  [
-                                                           "Add split health endpoints: /live (process only) and /ready (critical dependencies)",
-                                                           "Add structured logging and basic metrics for request/error/fps trends",
-                                                           "Pin and periodically review Instructor and Gemini model defaults in a compatibility checklist"
-                                                       ]
+                                                                "Add split health endpoints: /live (process only) and /ready (critical dependencies)",
+                                                                "Add structured logging and basic metrics for request/error/fps trends",
+                                                                "Pin and periodically review Instructor and Gemini model defaults in a compatibility checklist"
+                                                            ]
                                   },
     "patch_log":  {
                       "patched_on":  "2026-03-27",
@@ -952,12 +952,13 @@
                                       "Extended regression tests to assert conservative IDM wiring values in multi-agent mode",
                                       "Corrected backend status endpoint references to GET /health to match FastAPI implementation",
                                       "Applied default_config-based config-key gating to prevent class-specific MetaDrive config injection errors",
-                                      "Used MCP DeepWiki and Tavily search to align task specs with current Instructor structured output and FastAPI lifecycle best practices"
+                                      "Used MCP DeepWiki and Tavily search to align task specs with current Instructor structured output and FastAPI lifecycle best practices",
+                                      "MCP deep research completed for MetaDrive traffic-light controls, FastAPI lifespan patterns, Socket.IO AsyncServer emission safety, and Instructor structured output usage",
+                                      "Completed T01/T02/T03 implementation pass and marked all subtasks completed after gap audit",
+                                      "Added config-key compatibility guard in env creation to prevent class-specific MetaDrive key injection errors",
+                                      "Hardened emergency event debounce/cooldown and input normalization for stable corridor triggering",
+                                      "Added safety override logging and backend startup-degraded mode with /api/status endpoint",
+                                      "Improved Socket.IO broadcaster with safe emit wrappers and strengthened traffic-light direction mapping in signal controller"
                                   ]
                   }
 }
-
-
-
-
-
