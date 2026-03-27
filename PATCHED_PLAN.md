@@ -139,3 +139,48 @@ Python runtime is unavailable in this sandbox, so these checks are pending in yo
 - Updated `.env.exmaple` defaults/documentation to avoid invalid startup combo:
   - `SIM_ENV_MODE=multi_agent` now paired with `AGENT_POLICY_MODE=manual`
   - Added explicit note that multi-agent + IDM is unsupported.
+
+## MCP-guided multi-agent IDM enablement (2026-03-27)
+
+- Used MCP DeepWiki against `metadriverse/metadrive` to validate multi-agent IDM usage pattern.
+- Updated env creation to allow `SIM_ENV_MODE=multi_agent` with `AGENT_POLICY_MODE=idm` by injecting `agent_policy=IDMPolicy` into multi-agent config.
+- Updated runner multi-agent action path to emit neutral `[0, 0]` actions for active agents in IDM mode.
+- Retained fail-fast when multi-agent backend import is unavailable.
+- Updated regression test coverage to verify multi-agent IDM config wiring.
+
+## MCP-guided crash reduction hardening (2026-03-27)
+
+### MCP confirmation used
+
+- Queried DeepWiki (`metadriverse/metadrive`) for exact crash-reduction knobs in multi-agent mode.
+- Applied confirmed controls: conservative IDM policy attributes, reduced traffic density, shorter `delay_done`, lane-change suppression, and deceleration enabled.
+
+### Implemented stability/intelligence upgrades
+
+1. `envs/intersection_env.py`
+- Added conservative IDM policy wrapper configurable via env vars:
+  - `IDM_TIME_WANTED`, `IDM_DISTANCE_WANTED`, `IDM_NORMAL_SPEED`, `IDM_LANE_CHANGE_FREQ`, `IDM_SAFE_LANE_CHANGE_DISTANCE`
+- Added IDM behavior flags:
+  - `IDM_ENABLE_LANE_CHANGE` (default 0), `IDM_DISABLE_DECELERATION` (default 0)
+- Hardened multi-agent defaults for stability:
+  - `traffic_density` default 0.12, `delay_done` default 8, `out_of_road_done` default False
+- Added `MULTI_OUT_OF_ROAD_DONE` env parsing.
+
+2. `main.py`
+- Added incident telemetry:
+  - `crash_vehicle_events`, `out_of_road_events` in runtime status.
+- Added latching-based incident accounting for single and multi-agent step info maps.
+- Added adaptive manual throttle scaling based on cumulative incident count.
+
+3. `.env.exmaple`
+- Updated defaults to stable/intelligent multi-agent IDM profile.
+- Added explicit conservative IDM tuning block and `MULTI_OUT_OF_ROAD_DONE`.
+
+4. `tests/test_env_mode_guards.py`
+- Extended regression test to validate conservative IDM policy wiring and lane-change/deceleration flags in multi-agent mode.
+
+### Next tuning tasks
+
+1. Run a 5-10 minute multi-agent session and compare `crash_vehicle_events` trend before/after.
+2. If crashes still high, further reduce `TRAFFIC_DENSITY` to `0.08` and raise `IDM_TIME_WANTED` to `2.6`.
+3. Add a dedicated KPI endpoint/stream field for crash-rate per 1000 steps.

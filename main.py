@@ -47,6 +47,10 @@ class SimulationRunner:
         self.sim_env_mode = os.getenv("SIM_ENV_MODE", "single").strip().lower()
         self._controlled_agent_id: Any = None
         self._last_obs_by_agent: dict[Any, Any] = {}
+        self.crash_vehicle_events = 0
+        self.out_of_road_events = 0
+        self._single_incident_latched = {"crash_vehicle": False, "out_of_road": False}
+        self._multi_incident_latched: dict[Any, dict[str, bool]] = {}
 
         self.wait_s = {"north": 0, "south": 0, "east": 0, "west": 0}
         self.last_decision_step = -1
@@ -75,12 +79,6 @@ class SimulationRunner:
     async def start(self) -> dict:
         if self.running:
             return self.status()
-
-        if self._is_multi_agent_mode() and self.agent_policy_mode == "idm":
-            raise RuntimeError(
-                "AGENT_POLICY_MODE=idm is not supported in multi-agent mode. "
-                "Use AGENT_POLICY_MODE=manual or switch SIM_ENV_MODE=single."
-            )
 
         if self.env is None:
             self.env = create_intersection_env()
@@ -141,6 +139,10 @@ class SimulationRunner:
         }
         self.last_error = ""
         self.last_episode_result = ""
+        self.crash_vehicle_events = 0
+        self.out_of_road_events = 0
+        self._single_incident_latched = {"crash_vehicle": False, "out_of_road": False}
+        self._multi_incident_latched = {}
         return self.status()
 
     def status(self) -> dict:
@@ -160,6 +162,9 @@ class SimulationRunner:
             "sim_env_mode": self.sim_env_mode,
             "controlled_agent_id": str(self._controlled_agent_id) if self._controlled_agent_id is not None else None,
             "last_episode_result": self.last_episode_result,
+            "crash_vehicle_events": self.crash_vehicle_events,
+            "out_of_road_events": self.out_of_road_events,
+            "manual_throttle_scale": self._incident_throttle_scale(),
             "last_error": self.last_error,
         }
 
@@ -343,6 +348,16 @@ class SimulationRunner:
     def _should_decide_now(self) -> bool:
         return self.last_decision_step < 0 or (self.step - self.last_decision_step) >= self.llm_interval
 
+    def _incident_throttle_scale(self) -> float:
+        incidents = self.crash_vehicle_events + self.out_of_road_events
+        if incidents >= 20:
+            return 0.45
+        if incidents >= 10:
+            return 0.6
+        if incidents >= 5:
+            return 0.75
+        return 1.0
+
     def _driver_action(self) -> Any:
         if self._is_multi_agent_mode():
             return self._driver_action_multi()
@@ -353,22 +368,22 @@ class SimulationRunner:
             # IDM policy computes control internally; keep env action neutral.
             return np.asarray([0.0, 0.0], dtype=np.float32)
         steer = float(os.getenv("DRIVER_STEER", "0.0"))
-        throttle = float(os.getenv("DRIVER_THROTTLE", "0.35"))
-        throttle = self._adaptive_throttle(self._last_obs, throttle)
+        base_throttle = float(os.getenv("DRIVER_THROTTLE", "0.35"))
+        base_throttle *= self._incident_throttle_scale()
+        throttle = self._adaptive_throttle(self._last_obs, base_throttle)
         return np.asarray([steer, throttle], dtype=np.float32)
 
     def _driver_action_multi(self) -> dict[Any, np.ndarray]:
         steer = float(os.getenv("DRIVER_STEER", "0.0"))
         base_throttle = float(os.getenv("DRIVER_THROTTLE", "0.35"))
+        base_throttle *= self._incident_throttle_scale()
         active_ids = self._active_agent_ids()
         if not active_ids:
             return {}
 
         if self.agent_policy_mode == "idm":
-            raise RuntimeError(
-                "IDM control is not wired for multi-agent actions. "
-                "Set AGENT_POLICY_MODE=manual for multi-agent mode."
-            )
+            # IDM policy computes per-agent controls internally; keep actions neutral.
+            return {aid: np.asarray([0.0, 0.0], dtype=np.float32) for aid in active_ids}
 
         actions: dict[Any, np.ndarray] = {}
         for aid in active_ids:
@@ -431,6 +446,7 @@ class SimulationRunner:
 
         self._last_obs = obs
         self._last_info = info if isinstance(info, dict) else {}
+        self._record_single_incidents(self._last_info)
         return obs, terminated, truncated, self._last_info
 
     def _parse_multi_agent_step(self, step_tuple: tuple[Any, ...]) -> tuple[Any, bool, bool, dict[str, Any]]:
@@ -459,7 +475,38 @@ class SimulationRunner:
             self._last_obs = obs
 
         self._last_info = info if isinstance(info, dict) else {}
+        self._record_multi_incidents(self._last_info)
         return obs, terminated_any, truncated_any, self._last_info
+
+    def _record_single_incidents(self, info: dict[str, Any]) -> None:
+        crash = bool(info.get("crash_vehicle", False))
+        out_of_road = bool(info.get("out_of_road", False))
+
+        if crash and not self._single_incident_latched.get("crash_vehicle", False):
+            self.crash_vehicle_events += 1
+        if out_of_road and not self._single_incident_latched.get("out_of_road", False):
+            self.out_of_road_events += 1
+
+        self._single_incident_latched["crash_vehicle"] = crash
+        self._single_incident_latched["out_of_road"] = out_of_road
+
+    def _record_multi_incidents(self, info_map: dict[str, Any]) -> None:
+        for aid, value in info_map.items():
+            if aid == "__all__" or not isinstance(value, dict):
+                continue
+            prev = self._multi_incident_latched.get(aid, {"crash_vehicle": False, "out_of_road": False})
+            crash = bool(value.get("crash_vehicle", False))
+            out_of_road = bool(value.get("out_of_road", False))
+
+            if crash and not prev.get("crash_vehicle", False):
+                self.crash_vehicle_events += 1
+            if out_of_road and not prev.get("out_of_road", False):
+                self.out_of_road_events += 1
+
+            self._multi_incident_latched[aid] = {
+                "crash_vehicle": crash,
+                "out_of_road": out_of_road,
+            }
 
     def _update_episode_result_multi(self, info_map: dict[str, Any]) -> None:
         result = "terminated"
@@ -484,6 +531,8 @@ class SimulationRunner:
         assert self.env is not None
         reset_out = self.env.reset()
         self.episode_index += 1
+        self._single_incident_latched = {"crash_vehicle": False, "out_of_road": False}
+        self._multi_incident_latched = {}
         if isinstance(reset_out, tuple):
             self._last_obs = reset_out[0]
             maybe_info = reset_out[1] if len(reset_out) > 1 else {}
@@ -540,4 +589,21 @@ async def run(steps: int = 300) -> None:
 
 if __name__ == "__main__":
     asyncio.run(run())
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

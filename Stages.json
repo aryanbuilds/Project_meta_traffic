@@ -880,9 +880,20 @@
                                       "Blocked unsupported multi-agent IDM neutral-action path with explicit runtime errors",
                                       "Hardened routing graph env parsing with safe int/float fallbacks and probability clamping",
                                       "Added regression tests for env mode guards and routing env fallback parsing",
-                                      "Updated .env.exmaple to document and default to valid multi-agent policy mode pairing"
+                                      "Updated .env.exmaple to document and default to valid multi-agent policy mode pairing",
+                                      "Used MCP DeepWiki to validate MetaDrive multi-agent IDM usage pattern",
+                                      "Enabled multi-agent IDM by wiring agent_policy=IDMPolicy in multi env config",
+                                      "Updated runner to send neutral per-agent actions in multi-agent IDM mode",
+                                      "Superseded earlier temporary multi-agent IDM block with MCP-validated IDM wiring support",
+                                      "Added conservative IDM policy wrapper with MCP-confirmed safety knobs (time gap, distance, lane-change frequency)",
+                                      "Hardened multi-agent defaults for stability: lower traffic density, shorter delay_done, out_of_road_done control",
+                                      "Added runtime crash/out_of_road telemetry and adaptive manual throttle scaling",
+                                      "Updated env template with stable multi-agent IDM tuning profile and new stability env vars"
                                   ]
                   }
 }
+
+
+
 
 

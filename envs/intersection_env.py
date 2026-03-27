@@ -25,8 +25,9 @@ DEFAULT_MULTI_ENV_CONFIG = {
     "num_agents": 12,
     "allow_respawn": True,
     "crash_done": False,
-    "delay_done": 25,
-    "traffic_density": 0.15,
+    "out_of_road_done": False,
+    "delay_done": 8,
+    "traffic_density": 0.12,
     "start_seed": 42,
     "use_render": True,
     "map_config": {
@@ -61,6 +62,23 @@ def _env_float(name: str, default: float) -> float:
         return float(raw)
     except ValueError:
         return default
+
+
+def _safe_idm_policy_cls(base_cls: type[Any]) -> type[Any]:
+    if not _env_bool("IDM_CONSERVATIVE_MODE", True):
+        return base_cls
+
+    attrs = {
+        "TIME_WANTED": _env_float("IDM_TIME_WANTED", float(getattr(base_cls, "TIME_WANTED", 2.0))),
+        "DISTANCE_WANTED": _env_float("IDM_DISTANCE_WANTED", float(getattr(base_cls, "DISTANCE_WANTED", 12.0))),
+        "NORMAL_SPEED": _env_float("IDM_NORMAL_SPEED", float(getattr(base_cls, "NORMAL_SPEED", 18.0))),
+        "LANE_CHANGE_FREQ": _env_int("IDM_LANE_CHANGE_FREQ", int(getattr(base_cls, "LANE_CHANGE_FREQ", 120))),
+        "SAFE_LANE_CHANGE_DISTANCE": _env_float(
+            "IDM_SAFE_LANE_CHANGE_DISTANCE",
+            float(getattr(base_cls, "SAFE_LANE_CHANGE_DISTANCE", 20.0)),
+        ),
+    }
+    return type("ConservativeIDMPolicy", (base_cls,), attrs)
 
 
 def _screen_size() -> tuple[int, int]:
@@ -120,17 +138,13 @@ def create_intersection_env(config: dict[str, Any] | None = None) -> Any:
             "in this MetaDrive build. Switch SIM_ENV_MODE=single or install a MetaDrive version "
             "that provides metadrive.envs.marl_envs.marl_intersection.MultiAgentIntersectionEnv."
         )
-    if use_multi and policy_mode == "idm":
-        raise RuntimeError(
-            "AGENT_POLICY_MODE=idm is not supported with SIM_ENV_MODE=multi_agent in this project. "
-            "Use AGENT_POLICY_MODE=manual for multi-agent runs, or switch SIM_ENV_MODE=single to use IDMPolicy."
-        )
 
     if use_multi and MultiAgentIntersectionEnv is not None:
         merged = dict(DEFAULT_MULTI_ENV_CONFIG)
         merged["num_agents"] = _env_int("MULTI_AGENT_COUNT", merged["num_agents"])
         merged["allow_respawn"] = _env_bool("MULTI_ALLOW_RESPAWN", merged["allow_respawn"])
         merged["crash_done"] = _env_bool("MULTI_CRASH_DONE", merged["crash_done"])
+        merged["out_of_road_done"] = _env_bool("MULTI_OUT_OF_ROAD_DONE", merged["out_of_road_done"])
         merged["delay_done"] = _env_int("MULTI_DELAY_DONE", merged["delay_done"])
         merged["traffic_density"] = _env_float("TRAFFIC_DENSITY", merged["traffic_density"])
 
@@ -141,6 +155,13 @@ def create_intersection_env(config: dict[str, Any] | None = None) -> Any:
 
         merged["start_seed"] = _env_int("SIM_SEED", merged["start_seed"])
         merged["use_render"] = _env_bool("METADRIVE_USE_RENDER", merged["use_render"])
+        if policy_mode == "idm":
+            from metadrive.policy.idm_policy import IDMPolicy
+
+            merged["agent_policy"] = _safe_idm_policy_cls(IDMPolicy)
+            merged["enable_idm_lane_change"] = _env_bool("IDM_ENABLE_LANE_CHANGE", False)
+            merged["disable_idm_deceleration"] = _env_bool("IDM_DISABLE_DECELERATION", False)
+
         if config:
             merged.update(config)
         return MultiAgentIntersectionEnv(merged)
@@ -152,10 +173,13 @@ def create_intersection_env(config: dict[str, Any] | None = None) -> Any:
     merged["use_render"] = _env_bool("METADRIVE_USE_RENDER", merged["use_render"])
     if "METADRIVE_SHOW_INTERFACE" in os.environ:
         merged["show_interface"] = _env_bool("METADRIVE_SHOW_INTERFACE", False)
+
     if policy_mode == "idm":
         from metadrive.policy.idm_policy import IDMPolicy
 
-        merged["agent_policy"] = IDMPolicy
+        merged["agent_policy"] = _safe_idm_policy_cls(IDMPolicy)
+        merged["enable_idm_lane_change"] = _env_bool("IDM_ENABLE_LANE_CHANGE", False)
+        merged["disable_idm_deceleration"] = _env_bool("IDM_DISABLE_DECELERATION", False)
 
     if "CRASH_VEHICLE_DONE" in os.environ:
         merged["crash_vehicle_done"] = _env_bool("CRASH_VEHICLE_DONE", True)
@@ -251,7 +275,3 @@ def bootstrap_and_capture(config: dict[str, Any] | None = None) -> dict[str, Any
         return debug
     finally:
         env.close()
-
-
-
-

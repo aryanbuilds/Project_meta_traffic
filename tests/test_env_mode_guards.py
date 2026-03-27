@@ -12,10 +12,28 @@ def test_multi_agent_mode_requires_backend(monkeypatch):
         intersection_env.create_intersection_env()
 
 
-def test_multi_agent_mode_rejects_idm(monkeypatch):
+def test_multi_agent_mode_idm_sets_conservative_policy(monkeypatch):
     monkeypatch.setenv("SIM_ENV_MODE", "multi_agent")
     monkeypatch.setenv("AGENT_POLICY_MODE", "idm")
-    monkeypatch.setattr(intersection_env, "MultiAgentIntersectionEnv", object())
+    monkeypatch.setenv("IDM_CONSERVATIVE_MODE", "1")
+    monkeypatch.setenv("IDM_TIME_WANTED", "2.4")
+    monkeypatch.setenv("IDM_DISTANCE_WANTED", "16")
+    monkeypatch.setenv("IDM_ENABLE_LANE_CHANGE", "0")
 
-    with pytest.raises(RuntimeError, match="not supported"):
-        intersection_env.create_intersection_env()
+    captured = {}
+
+    class FakeMultiAgentEnv:
+        def __init__(self, cfg):
+            captured["cfg"] = cfg
+
+    monkeypatch.setattr(intersection_env, "MultiAgentIntersectionEnv", FakeMultiAgentEnv)
+
+    env = intersection_env.create_intersection_env()
+    assert isinstance(env, FakeMultiAgentEnv)
+
+    cfg = captured["cfg"]
+    assert "agent_policy" in cfg
+    assert cfg["enable_idm_lane_change"] is False
+    assert cfg["disable_idm_deceleration"] is False
+    assert pytest.approx(2.4) == getattr(cfg["agent_policy"], "TIME_WANTED")
+    assert pytest.approx(16.0) == getattr(cfg["agent_policy"], "DISTANCE_WANTED")
