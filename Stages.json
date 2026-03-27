@@ -868,14 +868,21 @@
                                            }
              },
     "patch_log":  {
-                      "patched_on":  "2026-03-26",
+                      "patched_on":  "2026-03-27",
                       "patched_by":  "Codex",
                       "changes":  [
                                       "Updated LLM integration references to instructor.from_provider",
                                       "Updated default Gemini model references to gemini-2.5-flash",
                                       "Corrected auto-rickshaw PCE references to 1.2",
                                       "Marked MetaDrive traffic-light control API as runtime-validated",
-                                      "Marked TrafficDojo repository reference as unverified"
+                                      "Marked TrafficDojo repository reference as unverified",
+                                      "Fail-fast added for missing multi-agent backend when SIM_ENV_MODE=multi_agent",
+                                      "Blocked unsupported multi-agent IDM neutral-action path with explicit runtime errors",
+                                      "Hardened routing graph env parsing with safe int/float fallbacks and probability clamping",
+                                      "Added regression tests for env mode guards and routing env fallback parsing",
+                                      "Updated .env.exmaple to document and default to valid multi-agent policy mode pairing"
                                   ]
                   }
 }
+
+

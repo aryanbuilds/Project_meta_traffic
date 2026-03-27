@@ -8,6 +8,11 @@ from typing import Any
 import numpy as np
 from metadrive import MetaDriveEnv
 
+try:
+    from metadrive.envs.marl_envs.marl_intersection import MultiAgentIntersectionEnv
+except Exception:  # noqa: BLE001
+    MultiAgentIntersectionEnv = None
+
 
 DEFAULT_ENV_CONFIG = {
     "num_scenarios": 1,
@@ -16,12 +21,46 @@ DEFAULT_ENV_CONFIG = {
     "map": "X",
 }
 
+DEFAULT_MULTI_ENV_CONFIG = {
+    "num_agents": 12,
+    "allow_respawn": True,
+    "crash_done": False,
+    "delay_done": 25,
+    "traffic_density": 0.15,
+    "start_seed": 42,
+    "use_render": True,
+    "map_config": {
+        "exit_length": 100,
+        "lane_num": 2,
+    },
+}
+
 
 def _env_bool(name: str, default: bool) -> bool:
     raw = os.getenv(name)
     if raw is None:
         return default
     return raw.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
 
 
 def _screen_size() -> tuple[int, int]:
@@ -70,13 +109,49 @@ def _topdown_render_config() -> dict[str, Any]:
     return config
 
 
-def create_intersection_env(config: dict[str, Any] | None = None) -> MetaDriveEnv:
+def create_intersection_env(config: dict[str, Any] | None = None) -> Any:
+    env_mode = os.getenv("SIM_ENV_MODE", "single").strip().lower()
+    use_multi = env_mode in {"multi", "multi_agent", "multi-agent"}
+    policy_mode = os.getenv("AGENT_POLICY_MODE", "manual").strip().lower()
+
+    if use_multi and MultiAgentIntersectionEnv is None:
+        raise RuntimeError(
+            "SIM_ENV_MODE is set to multi-agent, but MultiAgentIntersectionEnv is unavailable "
+            "in this MetaDrive build. Switch SIM_ENV_MODE=single or install a MetaDrive version "
+            "that provides metadrive.envs.marl_envs.marl_intersection.MultiAgentIntersectionEnv."
+        )
+    if use_multi and policy_mode == "idm":
+        raise RuntimeError(
+            "AGENT_POLICY_MODE=idm is not supported with SIM_ENV_MODE=multi_agent in this project. "
+            "Use AGENT_POLICY_MODE=manual for multi-agent runs, or switch SIM_ENV_MODE=single to use IDMPolicy."
+        )
+
+    if use_multi and MultiAgentIntersectionEnv is not None:
+        merged = dict(DEFAULT_MULTI_ENV_CONFIG)
+        merged["num_agents"] = _env_int("MULTI_AGENT_COUNT", merged["num_agents"])
+        merged["allow_respawn"] = _env_bool("MULTI_ALLOW_RESPAWN", merged["allow_respawn"])
+        merged["crash_done"] = _env_bool("MULTI_CRASH_DONE", merged["crash_done"])
+        merged["delay_done"] = _env_int("MULTI_DELAY_DONE", merged["delay_done"])
+        merged["traffic_density"] = _env_float("TRAFFIC_DENSITY", merged["traffic_density"])
+
+        map_cfg = dict(merged["map_config"])
+        map_cfg["exit_length"] = _env_int("INTERSECTION_EXIT_LENGTH", map_cfg["exit_length"])
+        map_cfg["lane_num"] = _env_int("INTERSECTION_LANE_NUM", map_cfg["lane_num"])
+        merged["map_config"] = map_cfg
+
+        merged["start_seed"] = _env_int("SIM_SEED", merged["start_seed"])
+        merged["use_render"] = _env_bool("METADRIVE_USE_RENDER", merged["use_render"])
+        if config:
+            merged.update(config)
+        return MultiAgentIntersectionEnv(merged)
+
     merged = dict(DEFAULT_ENV_CONFIG)
+    merged["start_seed"] = _env_int("SIM_SEED", merged["start_seed"])
+    merged["num_scenarios"] = _env_int("METADRIVE_NUM_SCENARIOS", merged["num_scenarios"])
+    merged["map"] = os.getenv("METADRIVE_MAP", merged["map"])
     merged["use_render"] = _env_bool("METADRIVE_USE_RENDER", merged["use_render"])
     if "METADRIVE_SHOW_INTERFACE" in os.environ:
         merged["show_interface"] = _env_bool("METADRIVE_SHOW_INTERFACE", False)
-
-    policy_mode = os.getenv("AGENT_POLICY_MODE", "manual").strip().lower()
     if policy_mode == "idm":
         from metadrive.policy.idm_policy import IDMPolicy
 
@@ -89,12 +164,11 @@ def create_intersection_env(config: dict[str, Any] | None = None) -> MetaDriveEn
     if "OUT_OF_ROAD_DONE" in os.environ:
         merged["out_of_road_done"] = _env_bool("OUT_OF_ROAD_DONE", True)
     if "TRAFFIC_DENSITY" in os.environ:
-        merged["traffic_density"] = float(os.getenv("TRAFFIC_DENSITY", "0.1"))
+        merged["traffic_density"] = _env_float("TRAFFIC_DENSITY", 0.1)
 
     if config:
         merged.update(config)
-    env = MetaDriveEnv(merged)
-    return env
+    return MetaDriveEnv(merged)
 
 
 def get_traffic_light_debug_info(env: MetaDriveEnv) -> dict[str, Any]:
@@ -135,6 +209,26 @@ def render_topdown_frame(env: MetaDriveEnv) -> np.ndarray:
     return frame
 
 
+def cycle_traffic_lights(env: Any, step: int) -> None:
+    manager = getattr(getattr(env, "engine", None), "traffic_manager", None)
+    lights = getattr(manager, "traffic_lights", None)
+    if not isinstance(lights, dict) or not lights:
+        return
+
+    cycle_steps = max(20, _env_int("TRAFFIC_LIGHT_CYCLE_STEPS", 140))
+    phase = (step // cycle_steps) % 3
+    for light in lights.values():
+        try:
+            if phase == 0 and hasattr(light, "set_green"):
+                light.set_green()
+            elif phase == 1 and hasattr(light, "set_yellow"):
+                light.set_yellow()
+            elif phase == 2 and hasattr(light, "set_red"):
+                light.set_red()
+        except Exception:
+            continue
+
+
 def save_test_frame(frame: np.ndarray, out_path: str = "data/test_frame.png") -> str:
     import cv2
 
@@ -157,3 +251,7 @@ def bootstrap_and_capture(config: dict[str, Any] | None = None) -> dict[str, Any
         return debug
     finally:
         env.close()
+
+
+
+

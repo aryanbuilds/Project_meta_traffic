@@ -22,7 +22,7 @@ from cv.pce_calculator import compute_all_zones
 from data.logger import get_kpi_summary, log_decision
 from emergency.corridor import CorridorCoordinator
 from emergency.event_handler import AmbulanceEventHandler
-from envs.intersection_env import create_intersection_env, render_topdown_frame, save_test_frame
+from envs.intersection_env import cycle_traffic_lights, create_intersection_env, render_topdown_frame, save_test_frame
 
 
 class SimulationRunner:
@@ -44,6 +44,9 @@ class SimulationRunner:
         self.episode_target = ""
         self.last_episode_result = ""
         self.agent_policy_mode = os.getenv("AGENT_POLICY_MODE", "manual").strip().lower()
+        self.sim_env_mode = os.getenv("SIM_ENV_MODE", "single").strip().lower()
+        self._controlled_agent_id: Any = None
+        self._last_obs_by_agent: dict[Any, Any] = {}
 
         self.wait_s = {"north": 0, "south": 0, "east": 0, "west": 0}
         self.last_decision_step = -1
@@ -72,6 +75,12 @@ class SimulationRunner:
     async def start(self) -> dict:
         if self.running:
             return self.status()
+
+        if self._is_multi_agent_mode() and self.agent_policy_mode == "idm":
+            raise RuntimeError(
+                "AGENT_POLICY_MODE=idm is not supported in multi-agent mode. "
+                "Use AGENT_POLICY_MODE=manual or switch SIM_ENV_MODE=single."
+            )
 
         if self.env is None:
             self.env = create_intersection_env()
@@ -148,6 +157,8 @@ class SimulationRunner:
             "episode_start_pos": self.episode_start_pos,
             "episode_target": self.episode_target,
             "agent_policy_mode": self.agent_policy_mode,
+            "sim_env_mode": self.sim_env_mode,
+            "controlled_agent_id": str(self._controlled_agent_id) if self._controlled_agent_id is not None else None,
             "last_episode_result": self.last_episode_result,
             "last_error": self.last_error,
         }
@@ -179,32 +190,27 @@ class SimulationRunner:
         terminated = False
         truncated = False
         info: dict[str, Any] = {}
-        if len(step_tuple) == 5:
-            obs = step_tuple[0]
-            terminated = bool(step_tuple[2])
-            truncated = bool(step_tuple[3])
-            info = step_tuple[4] if isinstance(step_tuple[4], dict) else {}
-        elif len(step_tuple) == 4:
-            obs = step_tuple[0]
-            terminated = bool(step_tuple[2])
-            info = step_tuple[3] if isinstance(step_tuple[3], dict) else {}
+        if self._is_multi_agent_mode():
+            obs, terminated, truncated, info = self._parse_multi_agent_step(step_tuple)
         else:
-            obs = step_tuple[0]
+            obs, terminated, truncated, info = self._parse_single_agent_step(step_tuple)
 
-        self._last_obs = obs
-        self._last_info = info if isinstance(info, dict) else {}
+        cycle_traffic_lights(self.env, self.step)
 
         if terminated or truncated:
             self.episodes_completed += 1
-            if bool(self._last_info.get("arrive_dest", False)):
-                self.arrive_dest_count += 1
-                self.last_episode_result = "arrive_dest"
-            elif bool(self._last_info.get("out_of_road", False)):
-                self.last_episode_result = "out_of_road"
-            elif bool(self._last_info.get("crash_vehicle", False)):
-                self.last_episode_result = "crash_vehicle"
+            if self._is_multi_agent_mode():
+                self._update_episode_result_multi(info)
             else:
-                self.last_episode_result = "terminated"
+                if bool(self._last_info.get("arrive_dest", False)):
+                    self.arrive_dest_count += 1
+                    self.last_episode_result = "arrive_dest"
+                elif bool(self._last_info.get("out_of_road", False)):
+                    self.last_episode_result = "out_of_road"
+                elif bool(self._last_info.get("crash_vehicle", False)):
+                    self.last_episode_result = "crash_vehicle"
+                else:
+                    self.last_episode_result = "terminated"
             self._reset_env()
 
         frame = render_topdown_frame(self.env)
@@ -337,14 +343,142 @@ class SimulationRunner:
     def _should_decide_now(self) -> bool:
         return self.last_decision_step < 0 or (self.step - self.last_decision_step) >= self.llm_interval
 
-    def _driver_action(self) -> np.ndarray:
+    def _driver_action(self) -> Any:
+        if self._is_multi_agent_mode():
+            return self._driver_action_multi()
+        return self._driver_action_single()
+
+    def _driver_action_single(self) -> np.ndarray:
         if self.agent_policy_mode == "idm":
             # IDM policy computes control internally; keep env action neutral.
             return np.asarray([0.0, 0.0], dtype=np.float32)
-        # Keep a stable forward-driving baseline to avoid random stuck behavior.
         steer = float(os.getenv("DRIVER_STEER", "0.0"))
         throttle = float(os.getenv("DRIVER_THROTTLE", "0.35"))
+        throttle = self._adaptive_throttle(self._last_obs, throttle)
         return np.asarray([steer, throttle], dtype=np.float32)
+
+    def _driver_action_multi(self) -> dict[Any, np.ndarray]:
+        steer = float(os.getenv("DRIVER_STEER", "0.0"))
+        base_throttle = float(os.getenv("DRIVER_THROTTLE", "0.35"))
+        active_ids = self._active_agent_ids()
+        if not active_ids:
+            return {}
+
+        if self.agent_policy_mode == "idm":
+            raise RuntimeError(
+                "IDM control is not wired for multi-agent actions. "
+                "Set AGENT_POLICY_MODE=manual for multi-agent mode."
+            )
+
+        actions: dict[Any, np.ndarray] = {}
+        for aid in active_ids:
+            obs = self._last_obs_by_agent.get(aid)
+            throttle = self._adaptive_throttle(obs, base_throttle)
+            actions[aid] = np.asarray([steer, throttle], dtype=np.float32)
+        return actions
+
+    def _adaptive_throttle(self, obs: Any, base_throttle: float) -> float:
+        min_lidar = self._min_lidar_distance(obs)
+        if min_lidar is None:
+            return float(np.clip(base_throttle, -1.0, 1.0))
+        if min_lidar < 0.12:
+            return -0.4
+        if min_lidar < 0.2:
+            return 0.0
+        if min_lidar < 0.35:
+            return min(base_throttle, 0.15)
+        return float(np.clip(base_throttle, -1.0, 1.0))
+
+    def _min_lidar_distance(self, obs: Any) -> float | None:
+        if not isinstance(obs, dict):
+            return None
+        lidar = obs.get("lidar")
+        if lidar is None:
+            return None
+        arr = np.asarray(lidar).reshape(-1)
+        if arr.size == 0:
+            return None
+        valid = arr[np.isfinite(arr)]
+        valid = valid[valid > 0]
+        if valid.size == 0:
+            return None
+        return float(np.min(valid))
+
+    def _is_multi_agent_mode(self) -> bool:
+        return self.sim_env_mode in {"multi", "multi_agent", "multi-agent"}
+
+    def _active_agent_ids(self) -> list[Any]:
+        env_agents = getattr(self.env, "agents", None)
+        if isinstance(env_agents, dict) and env_agents:
+            return list(env_agents.keys())
+        return list(self._last_obs_by_agent.keys())
+
+    def _parse_single_agent_step(self, step_tuple: tuple[Any, ...]) -> tuple[Any, bool, bool, dict[str, Any]]:
+        terminated = False
+        truncated = False
+        info: dict[str, Any] = {}
+        if len(step_tuple) == 5:
+            obs = step_tuple[0]
+            terminated = bool(step_tuple[2])
+            truncated = bool(step_tuple[3])
+            info = step_tuple[4] if isinstance(step_tuple[4], dict) else {}
+        elif len(step_tuple) == 4:
+            obs = step_tuple[0]
+            terminated = bool(step_tuple[2])
+            info = step_tuple[3] if isinstance(step_tuple[3], dict) else {}
+        else:
+            obs = step_tuple[0]
+
+        self._last_obs = obs
+        self._last_info = info if isinstance(info, dict) else {}
+        return obs, terminated, truncated, self._last_info
+
+    def _parse_multi_agent_step(self, step_tuple: tuple[Any, ...]) -> tuple[Any, bool, bool, dict[str, Any]]:
+        terminated_any = False
+        truncated_any = False
+        info: dict[str, Any] = {}
+        obs = step_tuple[0]
+
+        if len(step_tuple) >= 5:
+            terminated_map = step_tuple[2] if isinstance(step_tuple[2], dict) else {}
+            truncated_map = step_tuple[3] if isinstance(step_tuple[3], dict) else {}
+            info = step_tuple[4] if isinstance(step_tuple[4], dict) else {}
+            terminated_any = bool(terminated_map.get("__all__", False))
+            truncated_any = bool(truncated_map.get("__all__", False))
+        elif len(step_tuple) == 4:
+            terminated_map = step_tuple[2] if isinstance(step_tuple[2], dict) else {}
+            info = step_tuple[3] if isinstance(step_tuple[3], dict) else {}
+            terminated_any = bool(terminated_map.get("__all__", False))
+
+        if isinstance(obs, dict):
+            self._last_obs_by_agent = dict(obs)
+            if self._controlled_agent_id not in self._last_obs_by_agent:
+                self._controlled_agent_id = next(iter(self._last_obs_by_agent.keys()), None)
+            self._last_obs = self._last_obs_by_agent.get(self._controlled_agent_id)
+        else:
+            self._last_obs = obs
+
+        self._last_info = info if isinstance(info, dict) else {}
+        return obs, terminated_any, truncated_any, self._last_info
+
+    def _update_episode_result_multi(self, info_map: dict[str, Any]) -> None:
+        result = "terminated"
+        arrived_any = False
+        for _, value in info_map.items():
+            if not isinstance(value, dict):
+                continue
+            if bool(value.get("crash_vehicle", False)):
+                result = "crash_vehicle"
+                break
+            if bool(value.get("out_of_road", False)) and result != "crash_vehicle":
+                result = "out_of_road"
+            if bool(value.get("arrive_dest", False)):
+                arrived_any = True
+        if arrived_any:
+            self.arrive_dest_count += 1
+            if result == "terminated":
+                result = "arrive_dest"
+        self.last_episode_result = result
 
     def _reset_env(self) -> None:
         assert self.env is not None
@@ -357,6 +491,14 @@ class SimulationRunner:
         else:
             self._last_obs = reset_out
             self._last_info = {}
+
+        if isinstance(self._last_obs, dict):
+            self._last_obs_by_agent = dict(self._last_obs)
+            self._controlled_agent_id = next(iter(self._last_obs_by_agent.keys()), None)
+            self._last_obs = self._last_obs_by_agent.get(self._controlled_agent_id)
+        else:
+            self._last_obs_by_agent = {}
+            self._controlled_agent_id = None
 
         try:
             agent = getattr(self.env, "agent", None)
@@ -398,3 +540,4 @@ async def run(steps: int = 300) -> None:
 
 if __name__ == "__main__":
     asyncio.run(run())
+

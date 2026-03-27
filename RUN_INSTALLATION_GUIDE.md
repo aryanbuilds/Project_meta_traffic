@@ -67,10 +67,21 @@ TOPDOWN_CAMERA_MODE=map_center
 DRIVER_STEER=0.0
 DRIVER_THROTTLE=0.35
 AGENT_POLICY_MODE=idm
-TRAFFIC_DENSITY=0.1
+SIM_ENV_MODE=multi_agent
+TRAFFIC_DENSITY=0.2
 CRASH_VEHICLE_DONE=0
 CRASH_OBJECT_DONE=1
 OUT_OF_ROAD_DONE=1
+MULTI_AGENT_COUNT=12
+MULTI_ALLOW_RESPAWN=1
+MULTI_CRASH_DONE=0
+MULTI_DELAY_DONE=25
+INTERSECTION_EXIT_LENGTH=100
+INTERSECTION_LANE_NUM=2
+TRAFFIC_LIGHT_CYCLE_STEPS=140
+RANDOM_GRAPH_NODES=120
+RANDOM_GRAPH_EDGES=320
+RANDOM_GRAPH_LIGHT_PROB=0.25
 ```
 
 Guidance:
@@ -81,12 +92,14 @@ Guidance:
 - Set `TOPDOWN_WINDOW=0` for headless top-down rendering when visual window is not required.
 - Set `AGENT_POLICY_MODE=idm` for MetaDrive built-in autopilot behavior.
 - Set `CRASH_VEHICLE_DONE=0` to avoid immediate episode termination on vehicle collisions during demo loops.
+- Set `SIM_ENV_MODE=multi_agent` to enable `MultiAgentIntersectionEnv` and control all active agents per step.
+- The runner now applies lidar-aware adaptive throttle in manual mode to reduce collision likelihood.
 
 ## Environment Mode Selection
 
-- Use `MetaDriveEnv` (current implementation) for single-agent control and endpoint-focused demos.
-- Use `MultiAgentIntersectionEnv` for true multi-agent control where each agent has its own action each step.
-- Current backend is single-agent `MetaDriveEnv` with traffic participants, and now handles episode termination/reset correctly.
+- Use `MetaDriveEnv` by setting `SIM_ENV_MODE=single`.
+- Use `MultiAgentIntersectionEnv` by setting `SIM_ENV_MODE=multi_agent`.
+- Current backend supports both modes and resets episodes when `terminated["__all__"]` or `truncated["__all__"]` is reached in multi-agent mode.
 
 ## API Smoke Tests
 

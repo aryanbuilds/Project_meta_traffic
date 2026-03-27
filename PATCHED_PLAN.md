@@ -110,3 +110,32 @@ Python runtime is unavailable in this sandbox, so these checks are pending in yo
 - `routing/delhi_graph.py` now generates/loads a local weighted random graph for routing tests.
 - Delhi OSM graph connectivity is deferred for now.
 - `Stages.json` T04.1 and component notes updated to reflect random-graph-first workflow.
+
+## Regression hardening update (2026-03-27)
+
+### Fixes completed
+
+1. Multi-agent startup now fails fast when `SIM_ENV_MODE=multi_agent` is configured but `MultiAgentIntersectionEnv` is unavailable (`envs/intersection_env.py`).
+2. Unsupported `AGENT_POLICY_MODE=idm` in multi-agent mode now raises a clear runtime error instead of emitting neutral `[0, 0]` actions (`envs/intersection_env.py`, `main.py`).
+3. Random-graph env parsing now safely falls back to defaults on malformed values and clamps light probability to `[0.0, 1.0]` (`routing/delhi_graph.py`).
+
+### Why this update was required
+
+- Prevented mode mismatch regressions between env creation and runner action/termination handling.
+- Removed the silent stall path for multi-agent + IDM configuration.
+- Eliminated startup crash risk from invalid numeric env values in routing settings.
+
+### Next implementation tasks
+
+1. Add targeted tests for env mode validation and graph env parsing fallback.
+2. Validate multi-agent run path end-to-end on local machine with actual MetaDrive runtime.
+3. Update `.env.example` to document invalid mode combinations explicitly.
+
+### Additional completion (follow-up tasks)
+
+- Added targeted regression tests:
+  - `tests/test_env_mode_guards.py`
+  - `tests/test_random_graph_env_parsing.py`
+- Updated `.env.exmaple` defaults/documentation to avoid invalid startup combo:
+  - `SIM_ENV_MODE=multi_agent` now paired with `AGENT_POLICY_MODE=manual`
+  - Added explicit note that multi-agent + IDM is unsupported.

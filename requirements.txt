@@ -29,7 +29,9 @@ python-jose                      # JWT authentication
 # ── Data + Logging ────────────────────────────────────────
 pandas                          # KPI aggregation + CSV export
 sqlite-utils                    # SQLite decision logger
+pytest                            # testing framework
 
 # ── Config ────────────────────────────────────────────────
 python-dotenv                   # load .env (GEMINI_API_KEY etc.)
 jsonref
+setuptools<81                 # suppress pygame pkg_resources deprecation path warning
