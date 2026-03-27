@@ -326,7 +326,7 @@
                                            "id":  "T02.6",
                                            "title":  "YOLOv8 ambulance fine-tuning (stretch goal)",
                                            "status":  "in_progress",
-                                           "description":  "STRETCH GOAL � only if days 1-6 complete early. Capture 100+ MetaDrive frames with red ambulance spawned. Annotate ambulance bounding boxes on Roboflow (free tier). Export YOLOv8 format. Fine-tune: yolo train model=yolov8n.pt data=ambulance.yaml epochs=30 imgsz=800. Save to models/ambulance_yolov8n.pt if training data and time are available. Current repo path still uses the red color-heuristic fallback in cv/detector.py, which is the active demo-ready behavior because the fine-tuned artifact is not present.",
+                                           "description":  "STRETCH GOAL - only if days 1-6 complete early. Capture 100+ MetaDrive frames with red ambulance spawned. Annotate ambulance bounding boxes on Roboflow (free tier). Export YOLOv8 format. Fine-tune: yolo train model=yolov8n.pt data=ambulance.yaml epochs=30 imgsz=800. Save to models/ambulance_yolov8n.pt if training data and time are available. Current repo path still uses the red color-heuristic fallback in cv/detector.py, which is the active demo-ready behavior because the fine-tuned artifact is not present.",
                                            "file":  "models/ambulance_yolov8n.pt",
                                            "test":  "If the fine-tuned model exists, it detects ambulance at >0.7 confidence; otherwise the red color heuristic fallback in cv/detector.py remains reliable for demo frames."
                                        }
@@ -969,7 +969,12 @@
                                       "TA02 reimplementation: upgraded detection to supervision PolygonZone path with fallback assignment and generated zones_debug artifact",
                                       "TA03 reimplementation: added step-counter signal lifecycle scheduling (green -> yellow -> all_red) integrated in SimulationRunner",
                                       "TA04 reimplementation: integrated graph-backed emergency route metadata, strengthened debounce flow, and corridor progression actuation across route checkpoints",
-                                      "Used local MetaDrive documentation notebooks plus MCP DeepWiki/Tavily cross-check for traffic-light and topdown-render integration alignment"
+                                      "Used local MetaDrive documentation notebooks plus MCP DeepWiki/Tavily cross-check for traffic-light and topdown-render integration alignment",
+                                      "MCP verification pass: confirmed MetaDrive 0.4.x intersection setup expectations (map X + IDM compliance path) and reconciled runtime config behavior",
+                                      "Fixed T03.4 runtime fallback issue by adding provider-compatible LLM message retry path when multimodal content list is rejected",
+                                      "Added pipeline debug checkpoints (PIPELINE_DEBUG/SIGNAL_DEBUG) to expose YOLO counts, controller_type/latency, and per-light state mapping in live runs",
+                                      "Hardened env defaults for checklist validation: explicit multi-agent map X, default multi density 0.30, vehicle reverse disabled by default, and conservative IDM spacing baseline",
+                                      "Added missing benchmark/ and demo/ placeholder folders for honest stage tracking and downstream test artifacts"
                                   ]
                   }
 }

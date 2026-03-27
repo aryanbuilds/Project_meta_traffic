@@ -42,19 +42,38 @@ async def _decide_with_client(state: IntersectionState, frame: np.ndarray, model
     prompt = build_state_prompt(state)
     image_data_url = _encode_frame_to_data_url(frame)
     client = _client(model_name)
-    result: Any = client.create(
-        response_model=SignalDecision,
-        messages=[
-            {"role": "system", "content": INDIA_SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": image_data_url}},
-                ],
-            },
-        ],
-    )
+    messages_mm = [
+        {"role": "system", "content": INDIA_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": image_data_url}},
+            ],
+        },
+    ]
+    try:
+        result: Any = client.create(
+            response_model=SignalDecision,
+            messages=messages_mm,
+        )
+    except Exception as exc:
+        # Some instructor/provider combinations reject OpenAI-style multimodal content lists.
+        if "Unsupported content item type" not in str(exc):
+            raise
+        logger.info("Provider rejected multimodal payload; retrying with text-compatible prompt")
+        text_only_prompt = (
+            f"{prompt}\n\n"
+            "Image context (data URL, for multimodal-compatible providers):\n"
+            f"{image_data_url}"
+        )
+        result = client.create(
+            response_model=SignalDecision,
+            messages=[
+                {"role": "system", "content": INDIA_SYSTEM_PROMPT},
+                {"role": "user", "content": text_only_prompt},
+            ],
+        )
     if asyncio.iscoroutine(result):
         result = await result
     return cast(SignalDecision, result)

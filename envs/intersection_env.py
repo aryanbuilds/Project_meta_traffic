@@ -6,9 +6,13 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from dotenv import load_dotenv
 from metadrive import MetaDriveEnv
 
 from agent.signal_controller import _light_direction as _resolve_light_direction
+
+load_dotenv()
+
 try:
     from metadrive.envs.marl_envs.marl_intersection import MultiAgentIntersectionEnv
 except Exception:  # noqa: BLE001
@@ -28,7 +32,7 @@ DEFAULT_MULTI_ENV_CONFIG = {
     "crash_done": False,
     "out_of_road_done": False,
     "delay_done": 8,
-    "traffic_density": 0.12,
+    "traffic_density": 0.30,
     "start_seed": 42,
     "use_render": True,
     "map_config": {
@@ -95,7 +99,7 @@ def _safe_idm_policy_cls(base_cls: type[Any]) -> type[Any]:
 
     attrs = {
         "TIME_WANTED": _env_float("IDM_TIME_WANTED", float(getattr(base_cls, "TIME_WANTED", 2.0))),
-        "DISTANCE_WANTED": _env_float("IDM_DISTANCE_WANTED", float(getattr(base_cls, "DISTANCE_WANTED", 12.0))),
+        "DISTANCE_WANTED": _env_float("IDM_DISTANCE_WANTED", 8.0),
         "NORMAL_SPEED": _env_float("IDM_NORMAL_SPEED", float(getattr(base_cls, "NORMAL_SPEED", 18.0))),
         "LANE_CHANGE_FREQ": _env_int("IDM_LANE_CHANGE_FREQ", int(getattr(base_cls, "LANE_CHANGE_FREQ", 120))),
         "SAFE_LANE_CHANGE_DISTANCE": _env_float(
@@ -166,8 +170,7 @@ def create_intersection_env(config: dict[str, Any] | None = None) -> Any:
 
     if use_multi and MultiAgentIntersectionEnv is not None:
         merged = dict(DEFAULT_MULTI_ENV_CONFIG)
-        if "METADRIVE_MAP" in os.environ:
-            _set_if_supported(merged, MultiAgentIntersectionEnv, "map", os.getenv("METADRIVE_MAP", "X"))
+        _set_if_supported(merged, MultiAgentIntersectionEnv, "map", os.getenv("METADRIVE_MAP", "X"))
         _set_if_supported(merged, MultiAgentIntersectionEnv, "no_light", False)
         _set_if_supported(merged, MultiAgentIntersectionEnv, "traffic_light_status", True)
         merged["num_agents"] = _env_int("MULTI_AGENT_COUNT", merged["num_agents"])
@@ -184,6 +187,10 @@ def create_intersection_env(config: dict[str, Any] | None = None) -> Any:
 
         merged["start_seed"] = _env_int("SIM_SEED", merged["start_seed"])
         merged["use_render"] = _env_bool("METADRIVE_USE_RENDER", merged["use_render"])
+        if _supports_config_key(MultiAgentIntersectionEnv, "vehicle_config"):
+            vehicle_cfg = dict(merged.get("vehicle_config", {}))
+            vehicle_cfg["enable_reverse"] = _env_bool("VEHICLE_ENABLE_REVERSE", False)
+            merged["vehicle_config"] = vehicle_cfg
         if policy_mode == "idm":
             from metadrive.policy.idm_policy import IDMPolicy
 
@@ -214,6 +221,10 @@ def create_intersection_env(config: dict[str, Any] | None = None) -> Any:
     _set_if_supported(merged, MetaDriveEnv, "traffic_light_status", True)
     if "METADRIVE_SHOW_INTERFACE" in os.environ:
         merged["show_interface"] = _env_bool("METADRIVE_SHOW_INTERFACE", False)
+    if _supports_config_key(MetaDriveEnv, "vehicle_config"):
+        vehicle_cfg = dict(merged.get("vehicle_config", {}))
+        vehicle_cfg["enable_reverse"] = _env_bool("VEHICLE_ENABLE_REVERSE", False)
+        merged["vehicle_config"] = vehicle_cfg
 
     if policy_mode == "idm":
         from metadrive.policy.idm_policy import IDMPolicy

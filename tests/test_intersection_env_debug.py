@@ -79,7 +79,7 @@ def test_multi_agent_intersection_keeps_default_map_when_not_overridden(monkeypa
 
     env = intersection_env.create_intersection_env()
 
-    assert "map" not in env.cfg
+    assert env.cfg["map"] == "X"
     assert env.cfg["no_light"] is False
     assert env.cfg["traffic_light_status"] is True
 

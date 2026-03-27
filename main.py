@@ -71,6 +71,7 @@ class SimulationRunner:
         self.yolo_inference_rate = max(1, int(os.getenv("YOLO_INFERENCE_RATE", "3")))
         self.yellow_duration_s = max(2, int(os.getenv("YELLOW_DURATION_S", "5")))
         self.auto_cycle_traffic_lights = os.getenv("AUTO_CYCLE_TRAFFIC_LIGHTS", "0").strip() == "1"
+        self.pipeline_debug = os.getenv("PIPELINE_DEBUG", "0").strip() == "1"
         self.broadcaster = SimBroadcaster(sio, fps_cap=int(os.getenv("BROADCAST_FPS_CAP", "10"))) if sio else None
         self._last_detection = {
             "north": [],
@@ -240,6 +241,13 @@ class SimulationRunner:
         else:
             detection = self._last_detection
         zone_pce = compute_all_zones(detection, wait_s=self.wait_s)
+        if self.pipeline_debug:
+            zone_counts = {d: int(zone_pce[d]["count"]) for d in ("north", "south", "east", "west")}
+            print(
+                "PIPELINE_DEBUG"
+                f" step={self.step} infer={int(should_infer)} counts={zone_counts}"
+                f" ambulance={int(bool(detection.get('ambulance_detected', False)))}"
+            )
 
         await self._handle_emergency_detection(detection, fresh=should_infer)
         await self._pump_emergency_queue()
@@ -258,6 +266,13 @@ class SimulationRunner:
             signal_result = apply_decision(self.env, safe_decision, step=self.step, debug=signal_debug, control_mode="normal")
             if signal_debug:
                 print(f"SIGNAL_DEBUG step={self.step} result={signal_result}")
+            if self.pipeline_debug:
+                print(
+                    "PIPELINE_DEBUG"
+                    f" step={self.step} controller={controller_type}"
+                    f" latency_ms={latency_ms:.2f} phase={safe_decision.phase}"
+                    f" duration_s={safe_decision.duration_s}"
+                )
 
             self.latest_decision = safe_decision.model_dump()
             self.last_decision_step = self.step
@@ -566,7 +581,20 @@ class SimulationRunner:
     def _reset_env(self) -> None:
         assert self.env is not None
         reset_out = self.env.reset()
-        ensure_traffic_lights_ready(self.env)
+        light_count = ensure_traffic_lights_ready(self.env)
+        if self.pipeline_debug:
+            manager = getattr(getattr(self.env, "engine", None), "traffic_manager", None)
+            lights = getattr(manager, "traffic_lights", None)
+            light_meta = []
+            if isinstance(lights, dict):
+                for lid, light in lights.items():
+                    light_meta.append(
+                        {
+                            "id": str(lid),
+                            "direction": getattr(light, "direction", None),
+                        }
+                    )
+            print(f"PIPELINE_DEBUG reset episode={self.episode_index + 1} lights={light_count} light_meta={light_meta[:8]}")
         self.episode_index += 1
         self._single_incident_latched = {"crash_vehicle": False, "out_of_road": False}
         self._multi_incident_latched = {}

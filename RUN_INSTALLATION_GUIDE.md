@@ -69,6 +69,7 @@ DRIVER_THROTTLE=0.35
 AGENT_POLICY_MODE=idm
 SIM_ENV_MODE=multi_agent
 TRAFFIC_DENSITY=0.2
+VEHICLE_ENABLE_REVERSE=0
 CRASH_VEHICLE_DONE=0
 CRASH_OBJECT_DONE=1
 OUT_OF_ROAD_DONE=1
@@ -82,6 +83,8 @@ TRAFFIC_LIGHT_CYCLE_STEPS=140
 RANDOM_GRAPH_NODES=120
 RANDOM_GRAPH_EDGES=320
 RANDOM_GRAPH_LIGHT_PROB=0.25
+PIPELINE_DEBUG=1
+SIGNAL_DEBUG=1
 ```
 
 Guidance:
@@ -94,6 +97,8 @@ Guidance:
 - Set `CRASH_VEHICLE_DONE=0` to avoid immediate episode termination on vehicle collisions during demo loops.
 - Set `SIM_ENV_MODE=multi_agent` to enable `MultiAgentIntersectionEnv` and control all active agents per step.
 - The runner now applies lidar-aware adaptive throttle in manual mode to reduce collision likelihood.
+- Set `PIPELINE_DEBUG=1` to print stage-by-stage checkpoints (YOLO counts, LLM controller type/latency, and traffic-light inventory after reset).
+- Set `SIGNAL_DEBUG=1` to print per-light direction-target mapping and applied states.
 
 ## Environment Mode Selection
 
