@@ -11,7 +11,6 @@ torch                            # ultralytics dependency
 google-genai                    # Gemini API (replaces anthropic)
 instructor                      # guaranteed Pydantic output from Gemini
 pydantic                        # SignalDecision + IntersectionState models
-
 # ── Routing ───────────────────────────────────────────────
 osmnx                           # Delhi road graph download
 networkx                        # Dijkstra shortest path

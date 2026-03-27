@@ -120,7 +120,7 @@
                                                            "status":  "MVP",
                                                            "layer":  "Backend",
                                                            "role":  "REST API + ASGI server hosting Socket.IO for real-time dashboard communication",
-                                                           "detail":  "Endpoints: POST /api/emergency, POST /api/control, GET /api/status, GET /api/kpi, GET /api/decisions. Background asyncio task runs simulation loop. CORS enabled for React dev server on port 5173.",
+                                                           "detail":  "Endpoints: POST /api/emergency, POST /api/control, GET /health, GET /api/kpi, GET /api/decisions. Background asyncio task runs simulation loop. CORS enabled for React dev server on port 5173.",
                                                            "task":  "T05"
                                                        },
                                            "python_socketio":  {
@@ -208,13 +208,13 @@
                                               "MetaDrive_0_4_3"
                                           ],
                       "estimated_hours":  4,
-                      "description":  "Configure MetaDrive IntersectionEnv with Indian vehicle mix, top-down rendering, ambulance spawn, and main simulation loop. MetaDrive 0.4.3 installed and verified at 748 FPS. This task creates the virtual environment that serves as both simulation engine and virtual CCTV camera.",
+                      "description":  "Configure MetaDrive IntersectionEnv with Indian vehicle mix, top-down rendering, ambulance spawn, and main simulation loop. MetaDrive 0.4.3 installed and verified at 748 FPS. Includes runtime-safe config-key gating across MetaDriveEnv and MultiAgentIntersectionEnv to avoid class-specific config KeyError failures. This task creates the virtual environment that serves as both simulation engine and virtual CCTV camera.",
                       "subtasks":  [
                                        {
                                            "id":  "T01.1",
                                            "title":  "Create intersection environment config",
                                            "status":  "in_progress",
-                                           "description":  "Create envs/intersection_env.py. Instantiate MetaDrive IntersectionEnv with config: num_scenarios=1, start_seed=42, use_render=True, map=\u0027X\u0027. Call env.reset() and verify obs dict returned. Print traffic light IDs from env.engine.traffic_manager.traffic_lights to understand signal control handles available.",
+                                           "description":  "Create envs/intersection_env.py. Instantiate MetaDrive IntersectionEnv with config: num_scenarios=1, start_seed=42, use_render=True, map=\u0027X\u0027. Add mode guards for SIM_ENV_MODE=single|multi_agent and fail fast when MultiAgentIntersectionEnv backend is unavailable. Call env.reset() and verify obs dict returned. Print traffic light IDs from env.engine.traffic_manager.traffic_lights to understand signal control handles available.",
                                            "file":  "envs/intersection_env.py",
                                            "test":  "env.reset() returns obs without error. Traffic light IDs printed to console."
                                        },
@@ -237,7 +237,7 @@
                                        {
                                            "id":  "T01.4",
                                            "title":  "Spawn ambulance as special vehicle",
-                                           "status":  "todo",
+                                           "status":  "in_progress",
                                            "description":  "Create envs/ambulance_spawner.py. Function spawn_ambulance(env, origin_direction: str) -\u003e str (vehicle_id). Spawns vehicle with color=(255,0,0). Sets metadata type=ambulance on vehicle object. Returns vehicle_id for corridor tracking. Red color is detectable by cv/detector.py HSV heuristic (T02.3). Called by emergency/corridor.py when corridor activates.",
                                            "file":  "envs/ambulance_spawner.py",
                                            "test":  "Red vehicle visible in top-down frame after spawn_ambulance(env, \u0027north\u0027) call"
@@ -246,9 +246,25 @@
                                            "id":  "T01.5",
                                            "title":  "Main simulation loop",
                                            "status":  "in_progress",
-                                           "description":  "Create main.py. Loop: env.reset() then while not done: action=env.action_space.sample(), obs,r,done,info = env.step(action), frame = env.render(mode=\u0027topdown\u0027). Every LLM_DECISION_INTERVAL steps: pass frame + vehicle state to CV pipeline and LLM agent. Thread-safe frame buffer (threading.Lock) so FastAPI broadcaster can read latest frame. Graceful KeyboardInterrupt with env.close().",
+                                           "description":  "Create main.py. Loop: env.reset() then while not done: action=env.action_space.sample(), obs,r,done,info = env.step(action), frame = env.render(mode=\u0027topdown\u0027). Every LLM_DECISION_INTERVAL steps: pass frame + vehicle state to CV pipeline and LLM agent. Include incident telemetry (crash_vehicle_events, out_of_road_events), manual_throttle_scale reporting, and lidar-aware adaptive throttle scaling in manual control mode. Thread-safe frame buffer (threading.Lock) so FastAPI broadcaster can read latest frame. Graceful KeyboardInterrupt with env.close().",
                                            "file":  "main.py",
                                            "test":  "Simulation runs 1000 steps, prints step/FPS, no crash"
+                                       },
+                                       {
+                                           "id":  "T01.6",
+                                           "title":  "Regression guards for env mode and IDM wiring",
+                                           "status":  "in_progress",
+                                           "description":  "Add tests in tests/test_env_mode_guards.py covering: fail-fast when multi-agent backend is missing, and conservative IDM policy wiring in multi-agent mode (TIME_WANTED, DISTANCE_WANTED, lane-change toggle and deceleration policy controls).",
+                                           "file":  "tests/test_env_mode_guards.py",
+                                           "test":  "pytest tests/test_env_mode_guards.py validates mode guard + conservative IDM config propagation"
+                                       },
+                                       {
+                                           "id":  "T01.7",
+                                           "title":  "MetaDrive config-key compatibility guard",
+                                           "status":  "completed",
+                                           "description":  "Implemented _supports_config_key(...) in envs/intersection_env.py and gated class-specific IDM keys against target env default_config(). This prevents unsupported keys from being injected into MetaDriveEnv while preserving MultiAgentIntersectionEnv behavior.",
+                                           "file":  "envs/intersection_env.py",
+                                           "test":  "Backend startup no longer fails with KeyError on unsupported enable_idm_lane_change/disable_idm_deceleration keys"
                                        }
                                    ]
                   },
@@ -362,7 +378,7 @@
                                            "id":  "T03.4",
                                            "title":  "Gemini multimodal agent call",
                                            "status":  "in_progress",
-                                           "description":  "Create agent/llm_agent.py. Load GEMINI_API_KEY from .env. Setup: genai.configure(api_key=key). client = instructor.from_provider(\"google/gemini-2.5-flash\"). Function decide_signal(state: IntersectionState, frame: np.ndarray) -\u003e SignalDecision: (1) cv2.imencode(\u0027.jpg\u0027, frame) → base64. (2) Build messages list with image_url block + text block from build_state_prompt(state). (3) client.chat.completions.create(response_model=SignalDecision, messages=messages). (4) On any exception: print error, return rule_based_decision(state). Record latency_ms = time elapsed. Return decision.",
+                                           "description":  "Create agent/llm_agent.py. Load GEMINI_API_KEY from .env. Setup: client = instructor.from_provider(\"google/gemini-2.5-flash\"). Function decide_signal(state: IntersectionState, frame: np.ndarray) -\u003e SignalDecision: (1) cv2.imencode(\u0027.jpg\u0027, frame) → base64 data URL. (2) Build messages with image_url + text from build_state_prompt(state). (3) Use client.create(response_model=SignalDecision, messages=messages) for structured output validation via Instructor/Pydantic. (4) On exception: fallback to rule_based_decision(state). Record latency_ms and controller_type.",
                                            "file":  "agent/llm_agent.py",
                                            "test":  "decide_signal(mock_state, test_frame) returns valid SignalDecision with reasoning in \u003c5s"
                                        },
@@ -385,7 +401,7 @@
                                        {
                                            "id":  "T03.7",
                                            "title":  "Apply signal decision to MetaDrive",
-                                           "status":  "todo",
+                                           "status":  "in_progress",
                                            "description":  "Create agent/signal_controller.py. Function apply_decision(env, decision: SignalDecision, step: int). (1) Inspect env.engine.traffic_manager.traffic_lights to map direction strings to MetaDrive traffic light IDs. (2) Set green for decision.phase direction lights. (3) Set red for all other direction lights. (4) Schedule yellow after duration_s steps using asyncio.sleep or step counter. (5) Log to SQLite via data/logger.log_decision(). (6) Emit decision + frame to dashboard via broadcaster. NOTE: This module is architecturally equivalent to SUMO traci.trafficlight.setPhase() — same concept, different env API. In Phase 2, swap MetaDrive calls for TraCI calls.",
                                            "file":  "agent/signal_controller.py",
                                            "test":  "apply_decision changes traffic light color visible in top-down frame"
@@ -467,7 +483,7 @@
                                        {
                                            "id":  "T05.1",
                                            "title":  "FastAPI + Socket.IO app setup",
-                                           "status":  "in_progress",
+                                           "status":  "completed",
                                            "description":  "Create api/app.py. Setup: app = FastAPI(); sio = socketio.AsyncServer(cors_allowed_origins=\u0027*\u0027, async_mode=\u0027asgi\u0027); socket_app = socketio.ASGIApp(sio, app). Mount with: app.add_middleware(CORSMiddleware, allow_origins=[\u0027http://localhost:5173\u0027]). lifespan context manager starts sim_loop background task on startup, cleanly stops on shutdown. GET /health returns {status:\u0027ok\u0027, step: sim_state.step, fps: sim_state.fps}.",
                                            "file":  "api/app.py",
                                            "test":  "uvicorn api.app:socket_app --port 8000. curl http://localhost:8000/health returns JSON."
@@ -840,12 +856,23 @@
                                   "SIM_SEED":  "42",
                                   "SIM_STEPS":  "3600",
                                   "LLM_DECISION_INTERVAL":  "10",
+                                  "SIM_ENV_MODE":  "multi_agent",
+                                  "AGENT_POLICY_MODE":  "idm",
                                   "MIN_GREEN_S":  "15",
                                   "MAX_GREEN_S":  "60",
                                   "EMERGENCY_HOLD_S":  "30",
                                   "YOLO_AMBULANCE_CONF":  "0.7",
                                   "FRAME_SIZE":  "800",
-                                  "BROADCAST_FPS_CAP":  "10"
+                                  "BROADCAST_FPS_CAP":  "10",
+                                  "TRAFFIC_DENSITY":  "0.12",
+                                  "MULTI_DELAY_DONE":  "8",
+                                  "MULTI_OUT_OF_ROAD_DONE":  "0",
+                                  "IDM_CONSERVATIVE_MODE":  "1",
+                                  "IDM_TIME_WANTED":  "2.4",
+                                  "IDM_DISTANCE_WANTED":  "16",
+                                  "IDM_ENABLE_LANE_CHANGE":  "0",
+                                  "IDM_DISABLE_DECELERATION":  "0",
+                                  "status_watch_fields":  "crash_vehicle_events,out_of_road_events,manual_throttle_scale"
                               },
     "kpis":  {
                  "primary":  "avg_vehicle_wait_s — mean seconds any vehicle waits at a red signal (lower = better)",
@@ -867,6 +894,39 @@
                                                "llm_agent":  "25-35s avg wait"
                                            }
              },
+    "implementation_snapshot":  {
+                                    "updated_on":  "2026-03-27",
+                                    "runtime_validation":  "backend startup and /health verified locally via venv Python",
+                                    "implemented_features":  [
+                                                                 "Runtime-safe env mode selection (single vs multi_agent) with fail-fast guard when multi backend is unavailable",
+                                                                 "Conservative IDM wrapper with env-tunable time gap, distance, speed, and lane-change frequency",
+                                                                 "Config-key compatibility gating using env class default_config() to avoid MetaDrive KeyError on unsupported keys",
+                                                                 "Simulation telemetry surfaced in status: crash_vehicle_events, out_of_road_events, manual_throttle_scale",
+                                                                 "Structured LLM decision path using instructor.from_provider + Pydantic with rule-based fallback",
+                                                                 "Emergency pipeline primitives implemented: event queue, route text, corridor activation, ambulance spawn",
+                                                                 "FastAPI + Socket.IO backend with live frame/decision/zones/kpi/emergency channels and REST control endpoints"
+                                                             ],
+                                    "validated_endpoints":  [
+                                                              "GET /health"
+                                                          ]
+                                },
+    "mcp_research_improvements":  {
+                                      "sources":  [
+                                                      "DeepWiki: metadriverse/metadrive configuration inheritance and default_config guidance",
+                                                      "Tavily: Instructor Google integration docs for structured outputs",
+                                                      "Tavily: FastAPI lifespan and health/readiness best-practice references"
+                                                  ],
+                                      "applied_now":  [
+                                                          "Documented and tracked default_config-based config-key gating as a completed task item",
+                                                          "Aligned T03.4 task spec with current Instructor client.create structured-output pattern",
+                                                          "Marked backend setup complete after successful runtime /health validation"
+                                                      ],
+                                      "next_improvements":  [
+                                                           "Add split health endpoints: /live (process only) and /ready (critical dependencies)",
+                                                           "Add structured logging and basic metrics for request/error/fps trends",
+                                                           "Pin and periodically review Instructor and Gemini model defaults in a compatibility checklist"
+                                                       ]
+                                  },
     "patch_log":  {
                       "patched_on":  "2026-03-27",
                       "patched_by":  "Codex",
@@ -888,7 +948,11 @@
                                       "Added conservative IDM policy wrapper with MCP-confirmed safety knobs (time gap, distance, lane-change frequency)",
                                       "Hardened multi-agent defaults for stability: lower traffic density, shorter delay_done, out_of_road_done control",
                                       "Added runtime crash/out_of_road telemetry and adaptive manual throttle scaling",
-                                      "Updated env template with stable multi-agent IDM tuning profile and new stability env vars"
+                                      "Updated env template with stable multi-agent IDM tuning profile and new stability env vars",
+                                      "Extended regression tests to assert conservative IDM wiring values in multi-agent mode",
+                                      "Corrected backend status endpoint references to GET /health to match FastAPI implementation",
+                                      "Applied default_config-based config-key gating to prevent class-specific MetaDrive config injection errors",
+                                      "Used MCP DeepWiki and Tavily search to align task specs with current Instructor structured output and FastAPI lifecycle best practices"
                                   ]
                   }
 }
