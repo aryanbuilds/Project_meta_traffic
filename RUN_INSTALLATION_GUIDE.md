@@ -56,6 +56,22 @@ uvicorn api.app:socket_app --port 8000
 
 First run may download MetaDrive assets and yolov8n model weights.
 
+## Azure OpenAI Configuration
+
+Set these variables in `.env` before launching backend:
+
+```env
+AZURE_OPENAI_ENDPOINT=https://<resource-or-project>.openai.azure.com
+AZURE_OPENAI_API_KEY=<your-key>
+AZURE_OPENAI_API_VERSION=2025-01-01-preview
+AZURE_OPENAI_DEPLOYMENT=gpt-4o
+```
+
+Notes:
+
+- `AZURE_OPENAI_DEPLOYMENT` must match the deployment name configured in Azure AI Foundry.
+- If Azure variables are missing or requests fail, backend safely falls back to rule-based control.
+
 ## Performance and Top-View Tuning
 
 Set these in `.env` for better runtime speed and proper 2D window fit:
@@ -182,7 +198,7 @@ PowerShell parsing error when calling Python executable path:
 
 ## Security
 
-If the Gemini API key has been exposed in logs, rotate it immediately and update `.env`.
+If the Azure OpenAI API key has been exposed in logs, rotate it immediately and update `.env`.
 
 Validate the rotated key quickly:
 

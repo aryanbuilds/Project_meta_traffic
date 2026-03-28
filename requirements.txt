@@ -8,8 +8,8 @@ opencv-python                   # frame encoding, JPEG conversion
 numpy                           # array manipulation (supervision dependency)
 torch                           # pinned for Windows CPU in constraints/windows-cpu.txt
 # ── LLM Agent ─────────────────────────────────────────────
-google-genai                    # Gemini API (replaces anthropic)
-instructor                      # guaranteed Pydantic output from Gemini
+openai                          # Azure OpenAI client SDK
+instructor                      # guaranteed Pydantic output from Azure OpenAI
 pydantic                        # SignalDecision + IntersectionState models
 # ── Routing ───────────────────────────────────────────────
 osmnx                           # Delhi road graph download
@@ -31,6 +31,6 @@ sqlite-utils                    # SQLite decision logger
 pytest                            # testing framework
 
 # ── Config ────────────────────────────────────────────────
-python-dotenv                   # load .env (GEMINI_API_KEY etc.)
+python-dotenv                   # load .env (AZURE_OPENAI_* etc.)
 jsonref
 setuptools<81                 # suppress pygame pkg_resources deprecation path warning
