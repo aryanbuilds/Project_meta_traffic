@@ -34,3 +34,5 @@ pytest                            # testing framework
 python-dotenv                   # load .env (AZURE_OPENAI_* etc.)
 jsonref
 setuptools<81                 # suppress pygame pkg_resources deprecation path warning
+stable-baselines3
+gymnasium

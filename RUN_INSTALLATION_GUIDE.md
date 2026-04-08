@@ -34,6 +34,23 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\.venv\Scripts\Activate.ps1
 ```
 
+## RL Training & Visualisation
+
+The project now supports early-stage Reinforcement Learning for self-driving in a traffic environment. Try it with:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+
+# Train a model (Headless)
+python train_rl.py --mode train --steps 50000
+
+# Evaluate visually using the top-down 2D window
+python train_rl.py --mode eval --render 2d
+
+# Evaluate in native 3D (requires GUI and Panda3D renderer support)
+python train_rl.py --mode eval --render 3d
+```
+
 ## Preflight Checks
 
 ```powershell

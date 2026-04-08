@@ -125,6 +125,7 @@ dmypy.json
 # Project-specific
 *metadrive/
 *.db
+*.zip
 data/delhi_graph.graphml
 data/test_frame.png
 data/zones_debug.png

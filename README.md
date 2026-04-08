@@ -16,6 +16,9 @@ A bare-minimum OpenEnv-style environment for Round-1 self-driving collision avoi
 
 ## What Is Implemented
 
+- Self-driving Agent RL Training (`train_rl.py`) with PPO algorithm.
+  - Interactive top-down 2D evaluation.
+  - Native 3D Simulation Rendering.
 - Deterministic `reset`, `step`, and `state` environment loop.
 - Typed models for action, observation, state, reward, tasks, and grading.
 - Three benchmark tasks:
