@@ -1,0 +1,12 @@
+[project]
+name = "openenv-selfdriving-collision-avoidance"
+version = "0.1.0"
+description = "Bare-minimum OpenEnv self-driving collision-avoidance environment"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi",
+  "uvicorn",
+  "pydantic",
+  "requests",
+  "openai",
+]

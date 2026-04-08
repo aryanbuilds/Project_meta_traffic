@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import os
+from functools import lru_cache
 from typing import Any, Literal
 import numpy as np
 from agent.models import SignalDecision
@@ -14,6 +17,26 @@ def _iter_lights(env):
     if isinstance(lights, dict):
         return list(lights.items())
     return []
+
+
+@lru_cache(maxsize=1)
+def _configured_light_direction_map() -> dict[str, str]:
+    raw = os.getenv("SIGNAL_LIGHT_DIRECTION_MAP", "").strip()
+    if not raw:
+        return {}
+    try:
+        obj = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(obj, dict):
+        return {}
+
+    out: dict[str, str] = {}
+    for key, value in obj.items():
+        direction = _normalize_direction_token(value)
+        if direction in {"north", "south", "east", "west"}:
+            out[str(key)] = direction
+    return out
 
 
 def _normalize_direction_token(value: Any) -> str | None:
@@ -45,6 +68,10 @@ def _direction_from_heading(theta: Any) -> str | None:
 
 
 def _light_direction(light_id: str, light: Any | None = None) -> str | None:
+    configured = _configured_light_direction_map().get(str(light_id))
+    if configured in {"north", "south", "east", "west"}:
+        return configured
+
     if light is not None:
         attr_names = (
             "direction",

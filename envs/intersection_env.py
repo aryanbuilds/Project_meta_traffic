@@ -96,7 +96,7 @@ def _set_first_supported(config: dict[str, Any], env_cls: type[Any], values: lis
 
 
 def _perception_frame_source() -> str:
-    return os.getenv("PERCEPTION_FRAME_SOURCE", "rgb_camera").strip().lower()
+    return os.getenv("PERCEPTION_FRAME_SOURCE", "topdown").strip().lower()
 
 
 def _perception_sensor_name() -> str:

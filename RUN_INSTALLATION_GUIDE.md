@@ -83,6 +83,10 @@ PERCEPTION_SENSOR_NAME=rgb_camera
 PERCEPTION_WIDTH=640
 PERCEPTION_HEIGHT=360
 USE_POLYGON_ZONES=0
+PERCEPTION_FRAME_SOURCE=topdown
+PERCEPTION_SENSOR_NAME=rgb_camera
+PERCEPTION_WIDTH=640
+PERCEPTION_HEIGHT=360
 FRAME_SIZE=800
 TOPDOWN_AUTO_FIT=1
 TOPDOWN_MAX_SCREEN_RATIO=0.65
@@ -129,8 +133,14 @@ Guidance:
 - Set `SIM_ENV_MODE=multi_agent` to enable `MultiAgentIntersectionEnv` and control all active agents per step.
 - The runner now applies lidar-aware adaptive throttle in manual mode to reduce collision likelihood.
 - Set `PIPELINE_DEBUG=1` to print stage-by-stage checkpoints (YOLO counts, LLM controller type/latency, and traffic-light inventory after reset).
-- Use `PERCEPTION_FRAME_SOURCE=rgb_camera` to run YOLO on perspective 3D camera frames (recommended), while top-down rendering remains available for diagnostics.
+- Use `PERCEPTION_FRAME_SOURCE=topdown` as the stable default so YOLO zones and PCE quadrants match the top-view geometry.
+- Switch to `PERCEPTION_FRAME_SOURCE=rgb_camera` only when you intentionally recalibrate zones for perspective frames.
 - Set `SIGNAL_DEBUG=1` to print per-light direction-target mapping and applied states.
+
+Deterministic signal mapping override (optional):
+
+- If automatic traffic-light direction inference is unstable on your MetaDrive build, set `SIGNAL_LIGHT_DIRECTION_MAP` in `.env`.
+- Example: `SIGNAL_LIGHT_DIRECTION_MAP={"north_light":"north","south_light":"south","east_light":"east","west_light":"west"}`
 
 ## Environment Mode Selection
 

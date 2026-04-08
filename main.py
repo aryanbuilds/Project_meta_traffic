@@ -91,6 +91,7 @@ class SimulationRunner:
         self._active_decision_start_step = -1
         self.llm_success_count = 0
         self.llm_fallback_count = 0
+        self.last_controller_type = "none"
         self.last_signal_apply: dict[str, Any] = {}
         self.yolo_checkpoint_count = 0
         self.pce_checkpoint_count = 0
@@ -169,6 +170,7 @@ class SimulationRunner:
         self._multi_incident_latched = {}
         self.llm_success_count = 0
         self.llm_fallback_count = 0
+        self.last_controller_type = "none"
         self.last_signal_apply = {}
         self.yolo_checkpoint_count = 0
         self.pce_checkpoint_count = 0
@@ -198,6 +200,7 @@ class SimulationRunner:
             "last_error": self.last_error,
             "llm_success_count": self.llm_success_count,
             "llm_fallback_count": self.llm_fallback_count,
+            "last_controller_type": self.last_controller_type,
             "last_signal_apply": self.last_signal_apply,
             "yolo_checkpoint_count": self.yolo_checkpoint_count,
             "pce_checkpoint_count": self.pce_checkpoint_count,
@@ -269,7 +272,7 @@ class SimulationRunner:
         self.pce_checkpoint_count += 1
         if self.pipeline_debug:
             zone_counts = {d: int(zone_pce[d]["count"]) for d in ("north", "south", "east", "west")}
-            frame_source = "perspective" if not self.use_polygon_zones else "mixed"
+            frame_source = os.getenv("PERCEPTION_FRAME_SOURCE", "topdown").strip().lower()
             print(
                 "PIPELINE|"
                 f"step={self.step}|infer={int(should_infer)}|counts={zone_counts}|"
@@ -309,6 +312,7 @@ class SimulationRunner:
                 self.llm_success_count += 1
             else:
                 self.llm_fallback_count += 1
+            self.last_controller_type = controller_type
 
             self.latest_decision = safe_decision.model_dump()
             self.last_decision_step = self.step
@@ -385,6 +389,7 @@ class SimulationRunner:
         self.event_handler.corridor_active = True
         self._active_decision = None
         self._active_decision_start_step = -1
+        self.last_controller_type = "none"
         assert self.env is not None
         self._corridor_task = asyncio.create_task(
             self.corridor.activate_corridor(

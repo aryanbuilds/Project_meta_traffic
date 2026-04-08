@@ -1,0 +1,6 @@
+spec_version: 1
+name: openenv-selfdriving-collision-avoidance
+type: space
+runtime: fastapi
+app: openenv_selfdriving.server.app:app
+port: 8000
