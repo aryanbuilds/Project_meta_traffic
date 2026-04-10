@@ -6,10 +6,11 @@ WORKDIR /app
 COPY openenv_requirements.txt /app/openenv_requirements.txt
 RUN pip install --no-cache-dir -r /app/openenv_requirements.txt
 
-COPY pyproject.toml /app/pyproject.toml
+COPY pyproject.toml uv.lock /app/
 COPY openenv.yaml /app/openenv.yaml
 COPY inference.py /app/inference.py
 COPY openenv_selfdriving /app/openenv_selfdriving
+COPY server /app/server
 
 RUN chown -R user:user /app
 USER user
