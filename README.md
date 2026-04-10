@@ -1,5 +1,5 @@
 ---
-title: OpenEnv Self-Driving Collision Avoidance
+title: Autonomous Traffic Agent System
 colorFrom: blue
 colorTo: green
 sdk: docker
@@ -9,7 +9,7 @@ tags:
   - openenv
 ---
 
-# OpenEnv Self-Driving Collision Avoidance
+# Autonomous Traffic Agent System
 
 A bare-minimum OpenEnv-style environment for Round-1 self-driving collision avoidance.
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from openenv_selfdriving.environment import SelfDrivingOpenEnv
@@ -26,12 +26,109 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="OpenEnv Self-Driving Collision Avoidance", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Autonomous Traffic Agent System", version="0.1.0", lifespan=lifespan)
 
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 async def root():
-    return RedirectResponse(url="/docs")
+    return """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Autonomous Traffic Agent System</title>
+        <style>
+            body { font-family: sans-serif; text-align: center; background: #1e1e1e; color: #fff; }
+            canvas { background: #333; margin-top: 20px; border: 2px solid #555; }
+            button { padding: 10px 20px; margin: 10px; font-size: 16px; cursor: pointer; }
+        </style>
+    </head>
+    <body>
+        <h1>Autonomous Traffic Agent System Dashboard</h1>
+        <p>This is the monitoring view for the autonomous traffic optimizer.</p>
+        <button onclick="reset()">Reset Episode</button>
+        <button onclick="startAuto()">Auto Step</button>
+        <br>
+        <canvas id="simCanvas" width="800" height="200"></canvas>
+        <p id="status"></p>
+
+        <script>
+            let ctx = document.getElementById("simCanvas").getContext("2d");
+            let autoInterval = null;
+
+            async function fetchState() {
+                let res = await fetch("/state");
+                let data = await res.json();
+                draw(data);
+                if (data.collisions > 0 || data.reached_goal) clearInterval(autoInterval);
+            }
+
+            async function reset() {
+                clearInterval(autoInterval);
+                await fetch("/reset", { method: "POST", headers: {"Content-Type": "application/json"}, body: "{}" });
+                fetchState();
+            }
+
+            async function step() {
+                // Request a step from the autonomous simulation
+                let state_res = await fetch("/state");
+                let state = await state_res.json();
+
+                let action = "maintain";
+                // simple heuristic for baseline demo viewing
+                for (let obs of state.obstacles) {
+                    if (obs.lane === state.ego.lane && obs.position_m > state.ego.position_m && (obs.position_m - state.ego.position_m) < 40) {
+                        action = (state.ego.lane === 0) ? "lane_right" : "lane_left";
+                    }
+                }
+
+                let res = await fetch("/step", { 
+                    method: "POST", 
+                    headers: {"Content-Type": "application/json"}, 
+                    body: JSON.stringify({ action: action }) 
+                });
+                fetchState();
+            }
+
+            function startAuto() {
+                clearInterval(autoInterval);
+                autoInterval = setInterval(step, 500);
+            }
+
+            function draw(state) {
+                ctx.clearRect(0, 0, 800, 200);
+                
+                // Draw lanes
+                ctx.strokeStyle = "#888";
+                ctx.setLineDash([20, 15]);
+                for (let i=1; i<3; i++) {
+                    ctx.beginPath(); ctx.moveTo(0, i*66); ctx.lineTo(800, i*66); ctx.stroke();
+                }
+                
+                // Scale x
+                let scaleX = 800 / Math.max(100, state.goal_position_m);
+
+                // Draw obstacles
+                ctx.fillStyle = "red";
+                state.obstacles.forEach(obs => {
+                    ctx.fillRect(obs.position_m * scaleX, obs.lane * 66 + 10, 30, 46);
+                });
+
+                // Draw ego
+                ctx.fillStyle = "green";
+                ctx.fillRect(state.ego.position_m * scaleX, state.ego.lane * 66 + 10, 30, 46);
+
+                let info = `Step: ${state.step_count} | Collisions: ${state.collisions} | Ego Pos: ${state.ego.position_m.toFixed(1)}m`;
+                document.getElementById("status").innerText = info;
+            }
+
+            fetchState();
+        </script>
+    </body>
+    </html>
+    """
+
 
 
 @app.get("/health")
