@@ -106,9 +106,9 @@ docker run --rm -p 8000:8000 openenv-selfdriving:latest
 
 `inference.py` uses an OpenAI-compatible client and these environment variables:
 
-- `API_BASE_URL`: endpoint base URL for chat completions.
-- `MODEL_NAME`: model/deployment name.
-- `HF_TOKEN` or `OPENAI_API_KEY`: API key.
+- `API_BASE_URL`: endpoint base URL for chat completions (default: `https://api.openai.com/v1`).
+- `MODEL_NAME`: model/deployment name (default: `gpt-4o`).
+- `HF_TOKEN` or `OPENAI_API_KEY`: API key. Falls back to deterministic heuristic policy if unset.
 
 Example:
 
@@ -119,7 +119,31 @@ set OPENAI_API_KEY=your_key_here
 python inference.py
 ```
 
-The script prints JSON summary including per-task scores and `mean_score`.
+### Stdout Format
+
+The script emits structured log lines per the OpenEnv spec:
+
+```
+[START] task=easy_open_road env=openenv-selfdriving-collision-avoidance model=gpt-4o
+[STEP] step=1 action=accelerate reward=0.12 done=false error=null
+[STEP] step=2 action=maintain reward=0.08 done=false error=null
+...
+[END] success=true steps=15 score=0.85 rewards=0.12,0.08,...
+```
+
+One `[START]`/`[END]` block per task (3 total). After all tasks, a JSON summary with per-task scores and `mean_score` is printed.
+
+### Baseline Scores (deterministic fallback policy, seed=42)
+
+| Task | Score | Reached Goal | Collisions | Unsafe Events |
+|------|-------|--------------|------------|---------------|
+| easy_open_road | 0.77 | Yes | 0 | 0 |
+| medium_lane_change | 0.75 | Yes | 0 | 1 |
+| hard_dense_merge | 0.67 | Yes | 0 | 3 |
+
+**Mean score: 0.73**
+
+The deterministic fallback policy uses the environment's built-in `recommended_action` heuristic. An LLM-based agent should be able to score higher by planning multi-step lane changes and anticipating dynamic hazards in the hard task.
 
 ## Hugging Face Spaces Deployment Notes
 

@@ -31,14 +31,17 @@ TASK_CONFIGS: dict[str, TaskConfig] = {
             task_id="easy_open_road",
             title="Open Road Cruising",
             difficulty="easy",
-            description="Drive to destination while maintaining safe distance from one slow lead car.",
+            description=(
+                "Drive to destination on a mixed-traffic Indian highway while maintaining "
+                "safe distance from a slow auto-rickshaw ahead. Light traffic, clear lanes."
+            ),
             goal_position_m=120.0,
             max_steps=80,
         ),
         start_lane=1,
         start_speed_mps=8.0,
         obstacles=[
-            ObstacleSpawn(obstacle_id="lead_1", lane=1, position_m=55.0, speed_mps=5.0),
+            ObstacleSpawn(obstacle_id="lead_auto", lane=1, position_m=55.0, speed_mps=5.0),
             ObstacleSpawn(obstacle_id="left_far", lane=0, position_m=85.0, speed_mps=7.5),
         ],
     ),
@@ -47,7 +50,11 @@ TASK_CONFIGS: dict[str, TaskConfig] = {
             task_id="medium_lane_change",
             title="Safe Lane Change",
             difficulty="medium",
-            description="A blocked lane requires strategic lane change and speed adaptation.",
+            description=(
+                "A slow-moving truck blocks your lane on a busy Indian arterial road. "
+                "Weave through two-wheelers and cars to change lanes safely and reach "
+                "the destination without collision."
+            ),
             goal_position_m=140.0,
             max_steps=90,
         ),
@@ -64,17 +71,26 @@ TASK_CONFIGS: dict[str, TaskConfig] = {
             task_id="hard_dense_merge",
             title="Dense Traffic Merge",
             difficulty="hard",
-            description="Navigate dense traffic with changing hazards while avoiding collisions.",
-            goal_position_m=160.0,
-            max_steps=100,
+            description=(
+                "Navigate a congested Indian highway segment with mixed vehicle types, "
+                "sudden lane-changers, hard-braking trucks, and a fast-approaching vehicle "
+                "from behind. Multiple dynamic hazards require multi-step planning to avoid "
+                "collision chains. No single lane stays safe for long."
+            ),
+            goal_position_m=180.0,
+            max_steps=90,
         ),
         start_lane=1,
         start_speed_mps=10.0,
         obstacles=[
-            ObstacleSpawn(obstacle_id="front_slow", lane=1, position_m=25.0, speed_mps=4.0),
-            ObstacleSpawn(obstacle_id="left_mid", lane=0, position_m=28.0, speed_mps=6.0),
-            ObstacleSpawn(obstacle_id="right_merge", lane=2, position_m=30.0, speed_mps=5.0),
-            ObstacleSpawn(obstacle_id="far_brake", lane=1, position_m=95.0, speed_mps=3.0),
+            ObstacleSpawn(obstacle_id="front_slow", lane=1, position_m=22.0, speed_mps=4.0),
+            ObstacleSpawn(obstacle_id="left_mid", lane=0, position_m=24.0, speed_mps=6.0),
+            ObstacleSpawn(obstacle_id="right_merge", lane=2, position_m=26.0, speed_mps=5.0),
+            ObstacleSpawn(obstacle_id="far_brake", lane=1, position_m=80.0, speed_mps=3.0),
+            ObstacleSpawn(obstacle_id="left_fast", lane=0, position_m=55.0, speed_mps=11.0),
+            ObstacleSpawn(obstacle_id="lane_cutter", lane=2, position_m=58.0, speed_mps=7.0),
+            ObstacleSpawn(obstacle_id="left_blocker", lane=0, position_m=110.0, speed_mps=4.0),
+            ObstacleSpawn(obstacle_id="right_slow", lane=2, position_m=115.0, speed_mps=3.5),
         ],
     ),
 }

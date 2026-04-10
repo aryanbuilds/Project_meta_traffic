@@ -4,3 +4,10 @@ type: space
 runtime: fastapi
 app: openenv_selfdriving.server.app:app
 port: 8000
+tasks:
+  - task_id: easy_open_road
+    difficulty: easy
+  - task_id: medium_lane_change
+    difficulty: medium
+  - task_id: hard_dense_merge
+    difficulty: hard

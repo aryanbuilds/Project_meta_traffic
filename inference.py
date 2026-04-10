@@ -1,7 +1,7 @@
 """Round-1 baseline inference for OpenEnv self-driving collision avoidance.
 
-This script runs all available tasks, uses an OpenAI-compatible LLM endpoint
-for action selection, and prints deterministic baseline scores.
+Mandatory stdout format: [START], [STEP], [END] lines per hackathon spec.
+Uses OpenAI-compatible client for LLM action selection.
 """
 
 from __future__ import annotations
@@ -9,7 +9,14 @@ from __future__ import annotations
 import json
 import os
 import random
+import sys
 from typing import Any
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 from openai import OpenAI
 
@@ -20,6 +27,7 @@ from openenv_selfdriving.models import SelfDrivingAction, SelfDrivingObservation
 ALLOWED_ACTIONS = ["accelerate", "brake", "lane_left", "lane_right", "maintain"]
 DEFAULT_SEED = 42
 MAX_STEPS_BUFFER = 5
+BENCHMARK = "openenv-selfdriving-collision-avoidance"
 
 
 def _fallback_policy(observation: SelfDrivingObservation) -> str:
@@ -69,32 +77,72 @@ def _query_llm(
     return _fallback_policy(observation)
 
 
-def run_task(env: SelfDrivingOpenEnv, task_id: str, client: OpenAI | None, model_name: str) -> dict[str, Any]:
+def _fmt_bool(v: bool) -> str:
+    return "true" if v else "false"
+
+
+def run_task(
+    env: SelfDrivingOpenEnv,
+    task_id: str,
+    client: OpenAI | None,
+    model_name: str,
+) -> dict[str, Any]:
     observation = env.reset(task_id=task_id, seed=DEFAULT_SEED)
     history: list[str] = []
+    rewards: list[float] = []
     step_limit = env.state().max_steps + MAX_STEPS_BUFFER
 
+    # [START]
+    print(f"[START] task={task_id} env={BENCHMARK} model={model_name}", flush=True)
+
     done = False
-    last_reward = 0.0
-    for _ in range(step_limit):
-        if done:
-            break
-        if client is None:
-            action_name = _fallback_policy(observation)
-        else:
-            try:
-                action_name = _query_llm(client, model_name, observation, history)
-            except Exception:
+    last_error: str | None = None
+    step_n = 0
+
+    try:
+        for _ in range(step_limit):
+            if done:
+                break
+            if client is None:
                 action_name = _fallback_policy(observation)
+            else:
+                try:
+                    action_name = _query_llm(client, model_name, observation, history)
+                except Exception:
+                    action_name = _fallback_policy(observation)
 
-        step_out = env.step(SelfDrivingAction(action=action_name))
-        history.append(action_name)
-        observation = step_out.observation
-        done = step_out.done
-        last_reward = step_out.reward.value
+            step_out = env.step(SelfDrivingAction(action=action_name))
+            history.append(action_name)
+            observation = step_out.observation
+            done = step_out.done
+            reward_val = step_out.reward.value
+            rewards.append(reward_val)
+            step_n += 1
 
-    state = env.state()
-    grade = env.grade_current_episode()
+            last_error = step_out.info.get("last_action_error")
+            error_str = last_error if last_error else "null"
+
+            # [STEP]
+            print(
+                f"[STEP] step={step_n} action={action_name} "
+                f"reward={reward_val:.2f} done={_fmt_bool(done)} "
+                f"error={error_str}",
+                flush=True,
+            )
+    finally:
+        state = env.state()
+        grade = env.grade_current_episode()
+        score = grade.score
+        success = state.reached_goal
+        rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+
+        # [END]
+        print(
+            f"[END] success={_fmt_bool(success)} steps={step_n} "
+            f"score={score:.2f} rewards={rewards_str}",
+            flush=True,
+        )
+
     return {
         "task_id": task_id,
         "done": state.done,
@@ -103,7 +151,7 @@ def run_task(env: SelfDrivingOpenEnv, task_id: str, client: OpenAI | None, model
         "collisions": state.collisions,
         "unsafe_events": state.unsafe_events,
         "reached_goal": state.reached_goal,
-        "last_reward": round(last_reward, 4),
+        "last_reward": round(rewards[-1], 4) if rewards else 0.0,
         "grade_score": round(grade.score, 4),
     }
 
@@ -111,8 +159,8 @@ def run_task(env: SelfDrivingOpenEnv, task_id: str, client: OpenAI | None, model
 def main() -> None:
     random.seed(DEFAULT_SEED)
 
-    api_base_url = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
-    model_name = os.getenv("MODEL_NAME", "gpt-4o")
+    api_base_url = os.getenv("API_BASE_URL", "https://openrouter.ai/api/v1")
+    model_name = os.getenv("MODEL_NAME", "google/gemma-4-31b-it:free")
     api_key = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
 
     client: OpenAI | None = None

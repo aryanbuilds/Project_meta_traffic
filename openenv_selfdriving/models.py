@@ -59,6 +59,7 @@ class SelfDrivingObservation(BaseModel):
     collision_risk: float = Field(ge=0.0, le=1.0)
     recommended_action: ActionName
     message: str
+    last_action_error: str | None = None
 
 
 class SelfDrivingAction(BaseModel):
@@ -91,7 +92,7 @@ class StepOutput(BaseModel):
     observation: SelfDrivingObservation
     reward: SelfDrivingReward
     done: bool
-    info: dict[str, float | int | str | bool]
+    info: dict[str, float | int | str | bool | None]
 
 
 class TaskSpec(BaseModel):

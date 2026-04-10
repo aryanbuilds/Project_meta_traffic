@@ -28,6 +28,7 @@ class SelfDrivingOpenEnv:
         self._rng = Random(seed)
         self._seed = seed
         self._state: SelfDrivingState | None = None
+        self._last_action_error: str | None = None
 
     def list_tasks(self) -> list[TaskSpec]:
         return task_specs()
@@ -39,6 +40,7 @@ class SelfDrivingOpenEnv:
             self._seed = int(seed)
             self._rng = Random(self._seed)
 
+        self._last_action_error = None
         cfg = TASK_CONFIGS[task_id]
         obstacles = [
             ObstacleState(
@@ -69,7 +71,10 @@ class SelfDrivingOpenEnv:
 
     def step(self, action: SelfDrivingAction) -> StepOutput:
         state = self._require_state()
+        self._last_action_error = None
+
         if state.done:
+            self._last_action_error = "episode_already_done"
             reward = SelfDrivingReward(
                 value=0.0,
                 breakdown=RewardBreakdown(
@@ -85,7 +90,7 @@ class SelfDrivingOpenEnv:
                 observation=self._build_observation(),
                 reward=reward,
                 done=True,
-                info={"reason": "episode_already_done"},
+                info={"reason": "episode_already_done", "last_action_error": self._last_action_error},
             )
 
         prev_position = float(state.ego.position_m)
@@ -118,13 +123,14 @@ class SelfDrivingOpenEnv:
         state.cumulative_reward += reward.value
 
         obs = self._build_observation()
-        info = {
+        info: dict[str, float | int | str | bool | None] = {
             "task_id": state.task_id,
             "step_count": state.step_count,
             "collisions": state.collisions,
             "unsafe_events": state.unsafe_events,
             "done_reason": state.done_reason,
             "cumulative_reward": round(state.cumulative_reward, 4),
+            "last_action_error": self._last_action_error,
         }
         if state.done:
             report = grade_task(state)
@@ -157,15 +163,18 @@ class SelfDrivingOpenEnv:
                 ego.lane -= 1
             else:
                 state.unsafe_events += 1
+                self._last_action_error = "lane_boundary_violated"
         elif action == "lane_right":
             if ego.lane < 2:
                 ego.lane += 1
             else:
                 state.unsafe_events += 1
+                self._last_action_error = "lane_boundary_violated"
         elif action == "maintain":
             pass
         else:
             state.unsafe_events += 1
+            self._last_action_error = f"unknown_action:{action}"
 
     def _advance_world(self) -> None:
         state = self._require_state()
@@ -179,18 +188,37 @@ class SelfDrivingOpenEnv:
         if state.task_id != "hard_dense_merge":
             return
 
-        # Merge event: right lane traffic moves into center lane around mid-episode.
-        if 18 <= state.step_count <= 24:
+        # Merge event: right lane traffic moves into center lane early.
+        if 12 <= state.step_count <= 16:
             for obstacle in state.obstacles:
                 if obstacle.obstacle_id == "right_merge" and obstacle.lane == 2:
                     obstacle.lane = 1
                     obstacle.speed_mps = max(2.0, obstacle.speed_mps - 1.5)
 
         # Sudden braking event for the far lead vehicle.
-        if state.step_count >= 35:
+        if state.step_count >= 25:
             for obstacle in state.obstacles:
                 if obstacle.obstacle_id == "far_brake":
-                    obstacle.speed_mps = max(1.0, obstacle.speed_mps - 0.6)
+                    obstacle.speed_mps = max(1.0, obstacle.speed_mps - 0.8)
+
+        # Lane-cutter event: obstacle suddenly swerves from right to center lane.
+        if 20 <= state.step_count <= 24:
+            for obstacle in state.obstacles:
+                if obstacle.obstacle_id == "lane_cutter" and obstacle.lane == 2:
+                    obstacle.lane = 1
+                    obstacle.speed_mps = max(3.0, obstacle.speed_mps - 2.0)
+
+        # Left fast vehicle slows abruptly (simulates erratic two-wheeler behavior).
+        if state.step_count >= 30:
+            for obstacle in state.obstacles:
+                if obstacle.obstacle_id == "left_fast":
+                    obstacle.speed_mps = max(2.0, obstacle.speed_mps - 1.0)
+
+        # Late-stage squeeze: left blocker shifts to center lane.
+        if 50 <= state.step_count <= 55:
+            for obstacle in state.obstacles:
+                if obstacle.obstacle_id == "left_blocker" and obstacle.lane == 0:
+                    obstacle.lane = 1
 
     def _detect_collision(self) -> bool:
         state = self._require_state()
@@ -225,7 +253,7 @@ class SelfDrivingOpenEnv:
         lane_map = self._nearest_ahead_by_lane()
         current = lane_map["left" if state.ego.lane == 0 else "center" if state.ego.lane == 1 else "right"]
 
-        if current is not None and current < 8.0:
+        if current is not None and current < 12.0:
             if state.ego.lane > 0 and (lane_map["left"] is None or lane_map["left"] > current + 4.0):
                 return "lane_left"
             if state.ego.lane < 2 and (lane_map["right"] is None or lane_map["right"] > current + 4.0):
@@ -266,6 +294,7 @@ class SelfDrivingOpenEnv:
                 "Avoid collisions and reach the goal quickly. "
                 "Use lane changes only when safe headway exists."
             ),
+            last_action_error=self._last_action_error,
         )
 
     def _compute_reward(self, prev_position: float, collision: bool, unsafe: bool) -> SelfDrivingReward:
