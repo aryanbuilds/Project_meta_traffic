@@ -45,9 +45,10 @@ async def tasks() -> list[TaskSpec]:
 
 
 @app.post("/reset", response_model=SelfDrivingObservation)
-async def reset(req: ResetRequest) -> SelfDrivingObservation:
+async def reset(req: ResetRequest | None = None) -> SelfDrivingObservation:
+    if req is None:
+        req = ResetRequest()
     return env.reset(task_id=req.task_id, seed=req.seed)
-
 
 @app.post("/step", response_model=StepOutput)
 async def step(action: SelfDrivingAction) -> StepOutput:
