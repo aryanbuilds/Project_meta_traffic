@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from openenv_selfdriving.environment import SelfDrivingOpenEnv
@@ -26,6 +27,11 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="OpenEnv Self-Driving Collision Avoidance", version="0.1.0", lifespan=lifespan)
+
+
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/docs")
 
 
 @app.get("/health")
