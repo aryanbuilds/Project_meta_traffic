@@ -1,84 +1,108 @@
 ---
-title: Autonomous Traffic Agent System
+title: NeuroSignal India
 colorFrom: blue
 colorTo: green
 sdk: docker
 pinned: false
 app_port: 8000
 tags:
-  - openenv
+  - traffic-optimization
+  - computer-vision
+  - llm-agent
+  - metadrive
+  - yolov8
+  - gemini
 ---
 
-# Autonomous Traffic Agent System
+# NeuroSignal India — Dynamic AI Traffic Flow Optimizer & Emergency Grid
 
-A bare-minimum OpenEnv-style environment for Round-1 self-driving collision avoidance.
+![System Architecture](<shapes at 26-03-22 13.30.11.png>)
 
-## What Is Implemented
+An intelligent traffic management system that uses real-time computer vision to dynamically adjust signal timings based on live traffic density, with an AI-powered green corridor feature to prioritize routes for emergency vehicles such as ambulances and fire services.
 
-- Self-driving Agent RL Training (`train_rl.py`) with PPO algorithm.
-  - Interactive top-down 2D evaluation.
-  - Native 3D Simulation Rendering.
-- Deterministic `reset`, `step`, and `state` environment loop.
-- Typed models for action, observation, state, reward, tasks, and grading.
-- Three benchmark tasks:
-  - `easy_open_road`
-  - `medium_lane_change`
-  - `hard_dense_merge`
-- Deterministic episode grader returning normalized score in `[0.0, 1.0]`.
-- FastAPI server endpoints:
-  - `GET /health`
-  - `GET /tasks`
-  - `POST /reset`
-  - `POST /step`
-  - `GET /state`
-  - `GET /grade`
-- Baseline `inference.py` using OpenAI-compatible API client.
+*India Innovates 2026 submission — Team Runtime Rebels*
+
+## Problem
+
+Urban Indian intersections run on fixed-timer signals that ignore actual traffic load, lane-less mixed-vehicle flow, and emergency vehicle priority. Congestion wastes fuel, delays ambulances, and causes preventable fatalities.
+
+## Solution Overview
+
+A software-only MVP composed of three layers working in a closed loop:
+
+1. **Virtual CCTV (Simulation).** MetaDrive `IntersectionEnv` renders a top-down orthographic view of a 4-way junction at ~750 FPS. This frame is the camera input — no hardware required.
+2. **Real-Time Computer Vision.** YOLOv8n detects vehicles on every frame. `supervision.PolygonZone` partitions the frame into N/S/E/W approach zones. India-standard **Passenger Car Equivalent (PCE)** weights convert raw counts into per-direction traffic load scores.
+3. **LLM Signal Agent.** Gemini 2.5 Flash receives the structured PCE state plus the annotated top-down frame in a single multimodal call. An India-specific system prompt encodes lane-less rules, starvation prevention, and emergency protocol. `instructor` + Pydantic guarantee a validated `SignalDecision` that is applied to MetaDrive signals via `engine.traffic_manager`.
+
+On ambulance detection, Dijkstra over a road graph (`networkx`, upgradeable to a Delhi OSM graph via `osmnx`) computes the optimal corridor. The route is injected as emergency context into the LLM prompt, which then reasons about green-wave priority across the path.
+
+## Core Components
+
+| Layer | Component | Role |
+|---|---|---|
+| Simulation | MetaDrive 0.4.3 `IntersectionEnv` | Virtual CCTV + signal state manager |
+| Computer Vision | YOLOv8n | Vehicle detection (car, bus, truck, motorcycle) |
+| Computer Vision | `supervision.PolygonZone` | N/S/E/W zone segmentation |
+| Computer Vision | PCE Calculator | IRC-standard weighted load per zone |
+| LLM Agent | Gemini 2.5 Flash (`instructor` + Pydantic) | Multimodal signal decision with chain-of-thought |
+| LLM Agent | Safety Enforcer | Hard constraints on every LLM output (duration clamp, starvation override, emergency floor) |
+| LLM Agent | Rule-Based Controller | Fallback on LLM timeout + benchmark baseline |
+| Routing | `networkx` Dijkstra | Ambulance corridor computation |
+| Backend | FastAPI + `python-socketio` | REST API + real-time event stream |
+| Logging | SQLite (`sqlite-utils`) | Decision log for KPI aggregation |
+| Frontend | React + Vite + Recharts | Judge-facing dashboard (camera, reasoning, KPI, zones) |
+
+## Key Formulas
+
+- **Green time:** `green_s = clamp(15 + 1.5 * zone_PCE, 15, 60)`
+- **Pressure score (rule-based baseline):** `pressure = PCE * log(1 + wait_s)`
+- **PCE weights:** motorcycle = 0.5, auto-rickshaw = 1.2, car = 1.0, minibus = 1.5, bus/truck = 2.5
+
+## FastAPI Endpoints
+
+- `GET /health`
+- `GET /api/kpi`
+- `GET /api/decisions`
+- `POST /api/control`
+- `POST /api/emergency`
+- WebSocket events: `frame`, `decision`, `kpi`, `zones`, `emergency`
 
 ## Directory Layout
 
 ```
-openenv_selfdriving/
-  __init__.py
-  models.py
-  tasks.py
-  graders.py
-  environment.py
-  client.py
-  server/
-    __init__.py
-    app.py
-openenv.yaml
-Dockerfile
-inference.py
+Project_meta_traffic/
+  agent/            # LLM agent, instructor wrapper, safety enforcer
+  api/              # FastAPI app + Socket.IO handlers
+  benchmark/        # KPI comparison runner (LLM vs rule-based vs fixed-timer)
+  cv/               # YOLO detector, PolygonZone, PCE calculator
+  data/             # decisions.db, benchmark results
+  emergency/        # Ambulance detector + corridor trigger
+  envs/             # MetaDrive IntersectionEnv wrapper
+  routing/          # Dijkstra over road graph
+  server/           # ASGI entrypoint
+  Dockerfile
+  openenv.yaml
+  requirements.txt
 ```
-
-## Action and Observation Contract
-
-- Action values:
-  - `accelerate`
-  - `brake`
-  - `lane_left`
-  - `lane_right`
-  - `maintain`
-- Key observation fields:
-  - `ego_lane`, `ego_position_m`, `ego_speed_mps`
-  - `distance_to_goal_m`
-  - `nearest_ahead_by_lane_m`
-  - `collision_risk`
-  - `recommended_action`
 
 ## Local Run
 
 Install dependencies:
 
 ```bash
-pip install -r openenv_requirements.txt
+pip install -r requirements.txt
 ```
 
-Start server:
+Set the Gemini API key:
 
 ```bash
-uvicorn openenv_selfdriving.server.app:app --host 0.0.0.0 --port 8000
+set GEMINI_API_KEY=your_key_here
+```
+
+Start the server:
+
+```bash
+uvicorn api.app:app --host 0.0.0.0 --port 8000
 ```
 
 Health check:
@@ -89,67 +113,38 @@ curl http://127.0.0.1:8000/health
 
 ## Docker Run
 
-Build image:
+```bash
+docker build -t neurosignal-india:latest .
+docker run --rm -p 8000:8000 -e GEMINI_API_KEY=$GEMINI_API_KEY neurosignal-india:latest
+```
+
+## Benchmarking
+
+Three controllers are logged side-by-side to `data/decisions.db` with a `controller_type` column (`llm`, `rule_based`, `fixed_timer`). Run the comparison:
 
 ```bash
-docker build -t openenv-selfdriving:latest .
+python benchmark/run_all.py
 ```
 
-Run container:
+Reported KPIs: average wait time, ambulance corridor clearance time, throughput, decision latency.
 
-```bash
-docker run --rm -p 8000:8000 openenv-selfdriving:latest
-```
+## Environment
 
-## Baseline Inference and Scoring
+- OS: Windows 11 / Linux
+- Python: 3.12
+- MetaDrive: 0.4.3 (~748 FPS headless verified)
+- LLM: Gemini 2.5 Flash via `instructor.from_provider("google/gemini-2.5-flash")`
 
-`inference.py` uses an OpenAI-compatible client and these environment variables:
+## Roadmap (Phase 2)
 
-- `API_BASE_URL`: endpoint base URL for chat completions (default: `https://api.openai.com/v1`).
-- `MODEL_NAME`: model/deployment name (default: `gpt-4o`).
-- `HF_TOKEN` or `OPENAI_API_KEY`: API key. Falls back to deterministic heuristic policy if unset.
+- **SUMO TraCI** for real-intersection signal control (`traci.trafficlight.setPhase()`).
+- **TrafficDojo** bridge to sync SUMO signals with MetaDrive 3D visuals.
+- **CoLLMLight** multi-agent coordination for city-wide green waves.
+- **osmnx** Delhi OSM graph for realistic ambulance routing.
+- Fine-tuned YOLO ambulance class (replacing HSV red-mask heuristic).
 
-Example:
+## References
 
-```bash
-set API_BASE_URL=https://api.openai.com/v1
-set MODEL_NAME=gpt-4o
-set OPENAI_API_KEY=your_key_here
-python inference.py
-```
-
-### Stdout Format
-
-The script emits structured log lines per the OpenEnv spec:
-
-```
-[START] task=easy_open_road env=openenv-selfdriving-collision-avoidance model=gpt-4o
-[STEP] step=1 action=accelerate reward=0.12 done=false error=null
-[STEP] step=2 action=maintain reward=0.08 done=false error=null
-...
-[END] success=true steps=15 score=0.85 rewards=0.12,0.08,...
-```
-
-One `[START]`/`[END]` block per task (3 total). After all tasks, a JSON summary with per-task scores and `mean_score` is printed.
-
-### Baseline Scores (deterministic fallback policy, seed=42)
-
-| Task | Score | Reached Goal | Collisions | Unsafe Events |
-|------|-------|--------------|------------|---------------|
-| easy_open_road | 0.77 | Yes | 0 | 0 |
-| medium_lane_change | 0.75 | Yes | 0 | 1 |
-| hard_dense_merge | 0.67 | Yes | 0 | 3 |
-
-**Mean score: 0.73**
-
-The deterministic fallback policy uses the environment's built-in `recommended_action` heuristic. An LLM-based agent should be able to score higher by planning multi-step lane changes and anticipating dynamic hazards in the hard task.
-
-## Hugging Face Spaces Deployment Notes
-
-1. Ensure `openenv.yaml`, `Dockerfile`, and this `README.md` are in repo root.
-2. Push repository to a Docker Space.
-3. Space should expose FastAPI app on port `8000`.
-4. Set secret variables in Space settings if running remote LLM inference:
-   - `API_BASE_URL`
-   - `MODEL_NAME`
-   - `HF_TOKEN` or `OPENAI_API_KEY`
+- LLMLight (KDD 2025, Geneva Gold Medal) — LLM-as-agent for traffic signal control: https://github.com/usail-hkust/LLMTSCS
+- CoLLMLight — cooperative multi-junction LLM agents: https://github.com/usail-hkust/CoLLMLight
+- MetaDrive: https://github.com/metadriverse/metadrive
