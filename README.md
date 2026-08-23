@@ -20,7 +20,6 @@ tags:
 
 An intelligent traffic management system that uses real-time computer vision to dynamically adjust signal timings based on live traffic density, with an AI-powered green corridor feature to prioritize routes for emergency vehicles such as ambulances and fire services.
 
-*India Innovates 2026 submission — Team Runtime Rebels*
 
 ## Problem
 
